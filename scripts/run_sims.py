@@ -2,11 +2,15 @@ import pathlib
 import time
 from itertools import product
 
+import astropy.coordinates as coord
+import astropy.table as at
 import astropy.units as u
 import gala.dynamics as gd
 import gala.integrate as gi
 import gala.potential as gp
 import h5py
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 from gala.dynamics import mockstream as ms
 from gala.units import galactic
@@ -186,8 +190,21 @@ class StreamSubhaloSimulation:
         return stream_after_impact, unpert_stream_post, w_impact_end
 
 
+def get_in_stream_frame(stream, w_impact_end):
+    stream_galcen = coord.Galactocentric(stream.data)
+    stream_gal = stream_galcen.transform_to(coord.Galactic())
+
+    perturb_end_galcen = coord.Galactocentric(w_impact_end.data)
+    perturb_end_gal = perturb_end_galcen.transform_to(coord.Galactic())
+
+    stream_frame = coord.SkyOffsetFrame(origin=perturb_end_gal)
+    stream_sfr = stream_gal.transform_to(stream_frame)
+    return stream_sfr
+
+
 # Run a mockstream simulation with Gala and save the output to an hdf5 file
 def main(pool, overwrite=False):
+    print(f"Setting up job with n={pool.size} processes...")
     rng = np.random.default_rng(123)
 
     mw = gp.load(
@@ -236,7 +253,8 @@ def main(pool, overwrite=False):
 
     # Make a cache directory to save the simulation output:
     cache_path = (pathlib.Path(__file__).parent / "../cache").resolve().absolute()
-    cache_path.mkdir(exist_ok=True)
+    for subdir in ["plots", "data"]:
+        (cache_path / subdir).mkdir(exist_ok=True, parents=True)
 
     tasks = batch_tasks(
         arr=par_tasks,
@@ -244,7 +262,7 @@ def main(pool, overwrite=False):
         args=(sim_kw, impact_site, cache_path, overwrite),
     )
 
-    for res in pool.starmap(worker, tasks):
+    for _ in pool.starmap(worker, tasks):
         pass
 
 
@@ -252,7 +270,8 @@ def worker(idxs, batch, sim_kw, impact_site, cache_path, overwrite):
     for i, (M_subhalo, impact_v, impact_b_fac, t_post_impact, dxdv) in zip(
         range(*idxs), batch
     ):
-        filename = cache_path / f"stream-{i:04d}.hdf5"
+        filename = cache_path / "data" / f"stream-{i:04d}.hdf5"
+        plot_filename_base = cache_path / "plots" / f"stream-{i:04d}"
         if filename.exists():
             if not overwrite:
                 print(f"[{i}]: {filename} already exists, skipping...")
@@ -262,6 +281,8 @@ def worker(idxs, batch, sim_kw, impact_site, cache_path, overwrite):
 
         c_subhalo = 1.005 * u.kpc * (M_subhalo / (1e8 * u.Msun)) ** 0.5 / 2.0  # MAGIC
         impact_b = impact_b_fac * c_subhalo
+        dx = dxdv[0] / np.linalg.norm(dxdv[0]) * impact_b
+        dv = dxdv[1] / np.linalg.norm(dxdv[1]) * impact_v
 
         sim = StreamSubhaloSimulation(t_post_impact=t_post_impact, **sim_kw)
 
@@ -271,10 +292,7 @@ def worker(idxs, batch, sim_kw, impact_site, cache_path, overwrite):
         time0 = time.time()
         stream, _, w_impact_end = sim.run_perturbed_stream(
             impact_site_w=impact_site,
-            subhalo_impact_dw=gd.PhaseSpacePosition(
-                dxdv[0] / np.linalg.norm(dxdv[0]) * impact_b,
-                dxdv[1] / np.linalg.norm(dxdv[1]) * impact_v,
-            ),
+            subhalo_impact_dw=gd.PhaseSpacePosition(dx, dv),
             subhalo_potential=gp.HernquistPotential(
                 m=M_subhalo, c=c_subhalo, units=galactic
             ),
@@ -287,11 +305,71 @@ def worker(idxs, batch, sim_kw, impact_site, cache_path, overwrite):
             "writing to disk..."
         )
         with h5py.File(filename, mode="w") as f:
+            t = at.QTable()
+            t["M_subhalo"] = [M_subhalo]
+            t["impact_v"] = [impact_v]
+            t["impact_b"] = [impact_b]
+            t["t_post_impact"] = [t_post_impact]
+            t["dx"] = dx
+            t["dv"] = dv
+            t.write(f, serialize_meta=True, path="/parameters")
+
             g = f.create_group("stream")
             stream.to_hdf5(g)
 
             g = f.create_group("impact")
             w_impact_end.to_hdf5(g)
+
+        print(f"[{i}]: Plotting...")
+        stream_style = dict(
+            marker="o",
+            ms=1.0,
+            markeredgewidth=0,
+            ls="none",
+            alpha=0.2,
+            plot_function=plt.plot,
+        )
+
+        # ------------------------------------------
+        # x-y particle plot with impact site marked:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        stream.plot(["x", "y"], axes=[ax], **stream_style)
+        w_impact_end.plot(
+            ["x", "y"], axes=[ax], color="tab:red", autolim=False, zorder=100
+        )
+        fig.savefig(f"{str(plot_filename_base)}-xy.png", dpi=200)
+        plt.close(fig)
+
+        # ----------------------------------------
+        # sky projection, all simulated particles:
+        xlim = (-45, 45)
+        stream_sfr = get_in_stream_frame(stream, w_impact_end[-1])
+
+        lon = stream_sfr.lon.wrap_at(180 * u.deg).degree
+        _mask = (lon > xlim[0]) & (lon < xlim[1])
+
+        fig, axes = plt.subplots(
+            5, 1, figsize=(16, 20), sharex=True, constrained_layout=True
+        )
+
+        comps = ["lat", "distance", "pm_lon_coslat", "pm_lat", "radial_velocity"]
+        lims = [(-1, 1), None, None, (-0.2, 0), None]
+        for ax, comp, lim in zip(axes, comps, lims):
+            ax.hist2d(
+                lon[_mask],
+                getattr(stream_sfr, comp).value[_mask],
+                bins=(np.linspace(*xlim, 512), 101),
+                norm=mpl.colors.LogNorm(vmin=0.1),
+                cmap="Greys",
+            )
+            if lim is not None:
+                ax.set_ylim(lim)
+            ax.set_ylabel(comp)
+
+        axes[-1].set(xlim=xlim, xlabel="longitude [deg]")
+        fig.suptitle("all simulated particles", fontsize=22)
+        fig.savefig(f"{str(plot_filename_base)}-sky-all.png", dpi=200)
+        plt.close(fig)
 
         break
 
@@ -300,7 +378,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--nproc", type=int, default=1)
+    parser.add_argument("--nproc", type=int, default=None)
     parser.add_argument("-o", "--overwrite", action="store_true", default=False)
     args = parser.parse_args()
 
