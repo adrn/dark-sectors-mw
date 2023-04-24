@@ -15,6 +15,6 @@ init_env
 
 date
 
-python run_sims.py --overwrite
+python run_sims.py -o
 
 date
