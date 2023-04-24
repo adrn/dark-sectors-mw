@@ -73,7 +73,7 @@ class StreamSubhaloSimulation:
             self.M_stream,
             dt=self.dt,
             t1=0,
-            t2=self.t_pre_impact,
+            t2=self.t_pre_impact + self.t_post_impact,
             release_every=release_every,
             n_particles=n_particles,
         )
@@ -122,19 +122,36 @@ class StreamSubhaloSimulation:
         if impact_dt is None:
             impact_dt = (1.0 * u.pc / subhalo_v).to(u.Myr)
 
+        final_time = self.t_pre_impact + self.t_post_impact
+
+        # Backwards-integrate the impact site location from the end of the simulation
+        # to the time of impact
+        impact_site_at_impact = self.H.integrate_orbit(
+            impact_site_w,
+            dt=-self.dt / 10.0,
+            t1=final_time,
+            t2=self.t_pre_impact,
+            Integrator=gi.Ruth4Integrator,
+        )[-1]
+
+        # At the time of impact, define the subhalo relative phase-space coordinates,
+        # using parameters relative to the impact site
         w_subhalo_impact = gd.PhaseSpacePosition(
-            impact_site_w.xyz + subhalo_impact_dw.xyz,
-            impact_site_w.v_xyz + subhalo_impact_dw.v_xyz,
+            impact_site_at_impact.xyz + subhalo_impact_dw.xyz,
+            impact_site_at_impact.v_xyz + subhalo_impact_dw.v_xyz,
         )
+
+        # Integrate the subhalo orbit from time of impact back to the buffer time
         w_subhalo_buffer = self.H.integrate_orbit(
             w_subhalo_impact,
             dt=-self.dt / 10,
-            t1=t_buffer_impact,
-            t2=0,
+            t1=self.t_pre_impact,
+            t2=self.t_pre_impact - t_buffer_impact,
             Integrator=gi.Ruth4Integrator,
             store_all=False,
         )[0]
 
+        # Generate the mock stream up to the buffer time relative to the impact
         stream_buffer_pre, prog_w_buffer_pre = self._mockstream_gen.run(
             self._prog_w0,
             self.M_stream,
@@ -144,6 +161,8 @@ class StreamSubhaloSimulation:
             **self._mockstream_kw,
         )
 
+        # Extract mock stream particle initial conditions to prepare to forward
+        # integrate through the impact using N-body forces
         tmp = gd.PhaseSpacePosition(
             stream_buffer_pre.pos, stream_buffer_pre.vel, frame=stream_buffer_pre.frame
         )
@@ -157,19 +176,28 @@ class StreamSubhaloSimulation:
             frame=self.H.frame,
             save_all=False,
         )
+
+        if (self.t_pre_impact + t_buffer_impact) > final_time:
+            buffer_t2 = final_time
+        else:
+            buffer_t2 = self.t_pre_impact + t_buffer_impact
+
         stream_impact = nbody.integrate_orbit(
             dt=impact_dt,
             t1=self.t_pre_impact - t_buffer_impact,
-            t2=self.t_pre_impact + t_buffer_impact,
+            t2=buffer_t2,
         )
-        stream_after_impact = self.H.integrate_orbit(
-            stream_impact,
-            dt=self.dt,
-            t1=self.t_pre_impact + t_buffer_impact,
-            t2=self.t_pre_impact + self.t_post_impact,
-            Integrator=gi.Ruth4Integrator,
-            store_all=False,
-        )[0]
+        if buffer_t2 != final_time:
+            stream_after_impact = self.H.integrate_orbit(
+                stream_impact,
+                dt=self.dt,
+                t1=buffer_t2,
+                t2=final_time,
+                Integrator=gi.Ruth4Integrator,
+                store_all=False,
+            )[0]
+        else:
+            stream_after_impact = stream_impact
 
         unpert_stream_post, _ = self._mockstream_gen.run(
             prog_w_buffer_pre[0],
@@ -180,14 +208,7 @@ class StreamSubhaloSimulation:
             **self._mockstream_kw,
         )
 
-        w_impact_end = self.H.integrate_orbit(
-            impact_site_w,
-            dt=self.dt,
-            t1=self.t_pre_impact,
-            t2=self.t_pre_impact + self.t_post_impact,
-        )
-
-        return stream_after_impact, unpert_stream_post, w_impact_end
+        return stream_after_impact, unpert_stream_post
 
 
 def get_in_stream_frame(stream, w_impact_end):
@@ -219,7 +240,8 @@ def main(pool, overwrite=False):
         final_prog_w=wf,
         M_stream=5e4 * u.Msun,
         t_pre_impact=3 * u.Gyr,
-        n_particles=4,
+        dt=0.25 * u.Myr,
+        n_particles=8,
         seed=42,
     )
     print("Setting up simulation instance...")
@@ -262,11 +284,13 @@ def main(pool, overwrite=False):
         args=(sim_kw, impact_site, cache_path, overwrite),
     )
 
-    for _ in pool.starmap(worker, tasks):
+    for _ in pool.map(worker, tasks):
         pass
 
 
-def worker(idxs, batch, sim_kw, impact_site, cache_path, overwrite):
+def worker(task):
+    idxs, batch, sim_kw, impact_site, cache_path, overwrite = task
+
     for i, (M_subhalo, impact_v, impact_b_fac, t_post_impact, dxdv) in zip(
         range(*idxs), batch
     ):
@@ -290,7 +314,7 @@ def worker(idxs, batch, sim_kw, impact_site, cache_path, overwrite):
         MAGIC = 32
         print(f"[{i}]: starting simulation...")
         time0 = time.time()
-        stream, _, w_impact_end = sim.run_perturbed_stream(
+        stream, _ = sim.run_perturbed_stream(
             impact_site_w=impact_site,
             subhalo_impact_dw=gd.PhaseSpacePosition(dx, dv),
             subhalo_potential=gp.HernquistPotential(
@@ -310,15 +334,15 @@ def worker(idxs, batch, sim_kw, impact_site, cache_path, overwrite):
             t["impact_v"] = [impact_v]
             t["impact_b"] = [impact_b]
             t["t_post_impact"] = [t_post_impact]
-            t["dx"] = dx
-            t["dv"] = dv
+            t["dx"] = [dx]
+            t["dv"] = [dv]
             t.write(f, serialize_meta=True, path="/parameters")
 
             g = f.create_group("stream")
             stream.to_hdf5(g)
 
             g = f.create_group("impact")
-            w_impact_end.to_hdf5(g)
+            impact_site.to_hdf5(g)
 
         print(f"[{i}]: Plotting...")
         stream_style = dict(
@@ -332,18 +356,19 @@ def worker(idxs, batch, sim_kw, impact_site, cache_path, overwrite):
 
         # ------------------------------------------
         # x-y particle plot with impact site marked:
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6), constrained_layout=True)
         stream.plot(["x", "y"], axes=[ax], **stream_style)
-        w_impact_end.plot(
+        impact_site.plot(
             ["x", "y"], axes=[ax], color="tab:red", autolim=False, zorder=100
         )
+        ax.set(xlim=(-25, 25), ylim=(-25, 25))
         fig.savefig(f"{str(plot_filename_base)}-xy.png", dpi=200)
         plt.close(fig)
 
         # ----------------------------------------
         # sky projection, all simulated particles:
         xlim = (-45, 45)
-        stream_sfr = get_in_stream_frame(stream, w_impact_end[-1])
+        stream_sfr = get_in_stream_frame(stream, impact_site)
 
         lon = stream_sfr.lon.wrap_at(180 * u.deg).degree
         _mask = (lon > xlim[0]) & (lon < xlim[1])
@@ -353,25 +378,35 @@ def worker(idxs, batch, sim_kw, impact_site, cache_path, overwrite):
         )
 
         comps = ["lat", "distance", "pm_lon_coslat", "pm_lat", "radial_velocity"]
-        lims = [(-1, 1), None, None, (-0.2, 0), None]
-        for ax, comp, lim in zip(axes, comps, lims):
+        lims = [(-1, 1), (20, 26), (0, 1), (-0.2, 0.1), (-225, 100)]
+        for ax, comp, ylim in zip(axes, comps, lims):
             ax.hist2d(
                 lon[_mask],
                 getattr(stream_sfr, comp).value[_mask],
-                bins=(np.linspace(*xlim, 512), 101),
+                bins=(np.linspace(*xlim, 512), np.linspace(*ylim, 151)),
                 norm=mpl.colors.LogNorm(vmin=0.1),
                 cmap="Greys",
             )
-            if lim is not None:
-                ax.set_ylim(lim)
+            if ylim is not None:
+                ax.set_ylim(ylim)
             ax.set_ylabel(comp)
+
+        ax = axes[-1]
+        ax.text(
+            20,
+            90,
+            f"$M_s = ${M_subhalo:.1e}\n"
+            + f"$b = ${impact_b.to_value(u.pc):.1f} {u.pc:latex_inline}\n"
+            + f"$∆v = ${impact_v.to_value(u.pc/u.Myr):.1f} {u.pc/u.Myr:latex_inline}\n"
+            + f"$∆t = ${t_post_impact.to_value(u.Myr):.0f} {u.Myr:latex_inline}",
+            ha="left",
+            va="top",
+        )
 
         axes[-1].set(xlim=xlim, xlabel="longitude [deg]")
         fig.suptitle("all simulated particles", fontsize=22)
         fig.savefig(f"{str(plot_filename_base)}-sky-all.png", dpi=200)
         plt.close(fig)
-
-        break
 
 
 if __name__ == "__main__":
