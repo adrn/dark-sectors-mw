@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from gala.dynamics import mockstream as ms
 from gala.units import galactic
+from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.ndimage import gaussian_filter1d
+from scipy.stats import binned_statistic
 
 
 class StreamSubhaloSimulation:
@@ -215,13 +218,75 @@ class StreamSubhaloSimulation:
         return stream_after_impact, unpert_stream_post
 
 
-def get_in_stream_frame(stream, w_impact_end):
+def get_in_stream_frame(stream, w_impact_end, stream_frame=None):
     stream_galcen = coord.Galactocentric(stream.data)
     stream_gal = stream_galcen.transform_to(coord.Galactic())
 
-    perturb_end_galcen = coord.Galactocentric(w_impact_end.data)
-    perturb_end_gal = perturb_end_galcen.transform_to(coord.Galactic())
+    if stream_frame is None:
+        perturb_end_galcen = coord.Galactocentric(w_impact_end.data)
+        perturb_end_gal = perturb_end_galcen.transform_to(coord.Galactic())
 
-    stream_frame = coord.SkyOffsetFrame(origin=perturb_end_gal)
+        stream_frame = coord.SkyOffsetFrame(origin=perturb_end_gal)
+
     stream_sfr = stream_gal.transform_to(stream_frame)
     return stream_sfr
+
+
+def get_stream_track(stream_sfr, lon_lim=None, plot_debug=False):
+    """
+    Given a stream simulation in a rotated stream frame, compute the smoothed stream
+    track in each coordinate component.
+    """
+    x = stream_sfr.lon.wrap_at(180 * u.deg).degree
+    if lon_lim is None:
+        lon_lim = (x.min(), x.max())
+    lon_mask = (x >= lon_lim[0]) & (x <= lon_lim[1])
+
+    # longitude bins
+    bins = np.percentile(x[lon_mask], np.linspace(5, 95, 81))
+    dlon = 2.0
+    xtend1 = (lon_lim[0] - 2 * dlon, bins[0])
+    N1 = int((xtend1[1] - xtend1[0]) / dlon)
+    xtend2 = (bins[-1], lon_lim[1] + 2 * dlon)
+    N2 = int((xtend2[1] - xtend2[0]) / dlon)
+    bins = np.concatenate(
+        (np.linspace(*xtend1, N1), bins[1:-1], np.linspace(*xtend2, N2))
+    )
+
+    comps = ["lat", "distance", "pm_lon_coslat", "pm_lat", "radial_velocity"]
+
+    tracks = {}
+    for comp in comps:
+        y = getattr(stream_sfr, comp)
+        stat = binned_statistic(x, y.value, bins=bins, statistic=np.nanmedian)
+        xc = 0.5 * (stat.bin_edges[1:] + stat.bin_edges[:-1])
+
+        track_mask = np.isfinite(stat.statistic)
+        x_track = xc[track_mask]
+        y_track = gaussian_filter1d(stat.statistic[track_mask], 2.0, mode="nearest")
+        y_track = stat.statistic[track_mask]
+        tracks[comp] = InterpolatedUnivariateSpline(x_track, y_track, k=3)
+
+        if plot_debug:
+            plt.figure(figsize=(12, 3))
+            plt.hist2d(
+                x[lon_mask],
+                y.value[lon_mask],
+                bins=(np.linspace(*lon_lim, 512), 151),
+                norm=mpl.colors.LogNorm(vmin=0.1),
+                cmap="Greys",
+            )
+            plt.plot(x_track, y_track, marker="o", lw=1, color="tab:red")
+
+            # ---
+
+            plt.figure(figsize=(12, 3))
+            plt.hist2d(
+                x[lon_mask],
+                y.value[lon_mask] - tracks[comp](x[lon_mask]),
+                bins=(np.linspace(*lon_lim, 512), 151),
+                norm=mpl.colors.LogNorm(vmin=0.1),
+                cmap="Greys",
+            )
+
+    return tracks

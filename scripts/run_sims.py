@@ -12,7 +12,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from gala.units import galactic
 from schwimmbad import MultiPool
-from streamsubhalosim import StreamSubhaloSimulation, get_in_stream_frame
+from streamsubhalosim import (
+    StreamSubhaloSimulation,
+    get_in_stream_frame,
+    get_stream_track,
+)
 
 
 def sim_worker(task):
@@ -66,6 +70,8 @@ def sim_worker(task):
         "t_post_impact": t_post_impact,
         "dx": dx,
         "dv": dv,
+        "dx_hat": dxhat,
+        "dv_hat": dvhat,
     }
     return f"{i}", cache_file, stream, impact_site, pars
 
@@ -91,22 +97,46 @@ def sim_callback(res):
         impact_site.to_hdf5(group.create_group("impact_site"))
 
 
-def plot_worker():
-    idxs, batch, sim_kw, impact_site, cache_path, overwrite = task
+def plot_worker(task):
+    i, cache_file, sim_key, stream_frame, tracks, plot_path, overwrite = task
 
-    for i, (M_subhalo, impact_v, impact_b_fac, t_post_impact, dxdv) in zip(
-        range(*idxs), batch
-    ):
-        print(f"[{i}]: Plotting...")
-        stream_style = dict(
-            marker="o",
-            ms=1.0,
-            markeredgewidth=0,
-            ls="none",
-            alpha=0.2,
-            plot_function=plt.plot,
-        )
+    plot_filename_base = plot_path / f"stream-{int(sim_key):04d}"
+    filenames = {
+        "xy": pathlib.Path(f"{str(plot_filename_base)}-xy.png"),
+        "sky-all": pathlib.Path(f"{str(plot_filename_base)}-sky-all.png"),
+        "sky-all-dtrack": pathlib.Path(f"{str(plot_filename_base)}-sky-all-dtrack.png"),
+    }
 
+    with h5py.File(cache_file, "r") as f:
+        # Read subhalo simulation parameters:
+        pars = at.QTable.read(cache_file, path=f"/{sim_key}/parameters")[0]
+
+        # Read stream and impact site:
+        stream = gd.PhaseSpacePosition.from_hdf5(f[f"/{sim_key}/stream"])
+        impact_site = gd.PhaseSpacePosition.from_hdf5(f[f"/{sim_key}/impact_site"])
+
+    print(f"[{i}]: Plotting...")
+    stream_style = dict(
+        marker="o",
+        ms=1.0,
+        markeredgewidth=0,
+        ls="none",
+        alpha=0.2,
+        plot_function=plt.plot,
+    )
+
+    par_summary_text = (
+        f"$M_s = ${pars['M_subhalo']:.1e}\n"
+        + f"$b = ${pars['impact_b'].to_value(u.pc):.1f} {u.pc:latex_inline}\n"
+        + f"$∆v = ${pars['impact_v']:.1f} {pars['impact_v'].unit:latex_inline}\n"
+        + f"$∆t = ${pars['t_post_impact'].to_value(u.Myr):.0f} {u.Myr:latex_inline}\n"
+        + r"$\Delta\hat{x} = "
+        + f"${str(pars['dx_hat'])}\n"
+        + r"$\Delta\hat{v} = "
+        + f"${str(pars['dv_hat'])}"
+    )
+
+    if not filenames["xy"].exists() or overwrite:
         # ------------------------------------------
         # x-y particle plot with impact site marked:
         fig, ax = plt.subplots(1, 1, figsize=(6, 6), constrained_layout=True)
@@ -115,13 +145,14 @@ def plot_worker():
             ["x", "y"], axes=[ax], color="tab:red", autolim=False, zorder=100
         )
         ax.set(xlim=(-25, 25), ylim=(-25, 25))
-        fig.savefig(f"{str(plot_filename_base)}-xy.png", dpi=200)
+        fig.savefig(filenames["xy"], dpi=200)
         plt.close(fig)
 
+    if not filenames["sky-all"].exists() or overwrite:
         # ----------------------------------------
         # sky projection, all simulated particles:
         xlim = (-45, 45)
-        stream_sfr = get_in_stream_frame(stream, impact_site)
+        stream_sfr = get_in_stream_frame(stream, impact_site, stream_frame=stream_frame)
 
         lon = stream_sfr.lon.wrap_at(180 * u.deg).degree
         _mask = (lon > xlim[0]) & (lon < xlim[1])
@@ -146,23 +177,57 @@ def plot_worker():
 
         ax = axes[-1]
         ax.text(
-            20,
-            90,
-            f"$M_s = ${M_subhalo:.1e}\n"
-            + f"$b = ${impact_b.to_value(u.pc):.1f} {u.pc:latex_inline}\n"
-            + f"$∆v = ${impact_v.to_value(u.pc/u.Myr):.1f} {u.pc/u.Myr:latex_inline}\n"
-            + f"$∆t = ${t_post_impact.to_value(u.Myr):.0f} {u.Myr:latex_inline}\n"
-            + r"$\Delta\hat{x} = "
-            + f"${str(dxhat)}\n"
-            + r"$\Delta\hat{v} = "
-            + f"${str(dvhat)}",
+            30,
+            lims[-1][1] * 0.9,
+            par_summary_text,
             ha="left",
             va="top",
         )
 
         axes[-1].set(xlim=xlim, xlabel="longitude [deg]")
         fig.suptitle("all simulated particles", fontsize=22)
-        fig.savefig(f"{str(plot_filename_base)}-sky-all.png", dpi=200)
+        fig.savefig(filenames["sky-all"], dpi=200)
+        plt.close(fig)
+
+    if not filenames["sky-all-dtrack"].exists() or overwrite:
+        # ------------------------------------------------------------
+        # sky projection, all simulated particles, relative to tracks:
+        xlim = (-45, 45)
+        stream_sfr = get_in_stream_frame(stream, impact_site, stream_frame=stream_frame)
+
+        lon = stream_sfr.lon.wrap_at(180 * u.deg).degree
+        _mask = (lon > xlim[0]) & (lon < xlim[1])
+
+        fig, axes = plt.subplots(
+            5, 1, figsize=(16, 20), sharex=True, constrained_layout=True
+        )
+
+        comps = ["lat", "distance", "pm_lon_coslat", "pm_lat", "radial_velocity"]
+        lims = [(-1, 1), (-1.5, 1.5), (-0.15, 0.15), (-0.15, 0.15), (-10, 10)]
+        for ax, comp, ylim in zip(axes, comps, lims):
+            ax.hist2d(
+                lon[_mask],
+                getattr(stream_sfr, comp).value[_mask] - tracks[comp](lon[_mask]),
+                bins=(np.linspace(*xlim, 512), np.linspace(*ylim, 151)),
+                norm=mpl.colors.LogNorm(vmin=0.1),
+                cmap="Greys",
+            )
+            if ylim is not None:
+                ax.set_ylim(ylim)
+            ax.set_ylabel(comp)
+
+        ax = axes[-1]
+        ax.text(
+            30,
+            lims[-1][1] * 0.9,
+            par_summary_text,
+            ha="left",
+            va="top",
+        )
+
+        axes[-1].set(xlim=xlim, xlabel="longitude [deg]")
+        fig.suptitle("all simulated particles", fontsize=22)
+        fig.savefig(filenames["sky-all-dtrack"], dpi=200)
         plt.close(fig)
 
 
@@ -200,16 +265,28 @@ def main(pool, overwrite=False):
         n_particles=4,
         seed=42,
     )
-    print("Setting up simulation instance...")
-    sim = StreamSubhaloSimulation(t_post_impact=0 * u.Myr, **sim_kw)
 
-    print("Running initial stream simulation...")
-    init_stream, init_prog = sim.run_init_stream()
-    print("Finding a good impact site...")
-    impact_site = sim.get_impact_site(init_stream, init_prog)
+    with h5py.File(cache_file, mode="r+") as f:
+        if "init" in f.keys() and overwrite:
+            del f["init"]
 
-    # Save to cache file:
-    sim_callback(("init", cache_file, init_stream, impact_site, {}))
+        run_init_sim = "init" not in f.keys()
+
+    if run_init_sim:
+        print("Setting up simulation instance...")
+        sim = StreamSubhaloSimulation(t_post_impact=0 * u.Myr, **sim_kw)
+
+        print("Running initial stream simulation...")
+        init_stream, init_prog = sim.run_init_stream()
+        print("Finding a good impact site...")
+        impact_site = sim.get_impact_site(init_stream, init_prog)
+
+        # Save to cache file:
+        sim_callback(("init", cache_file, init_stream, impact_site, {}))
+
+    else:
+        with h5py.File(cache_file, mode="r") as f:
+            impact_site = gd.PhaseSpacePosition.from_hdf5(f["init/impact_site"])
 
     # Define the grid of subhalo/interaction parameters to run with
     Ms = [5e5, 1e6, 5e6, 1e7] * u.Msun
@@ -236,11 +313,33 @@ def main(pool, overwrite=False):
     for _ in pool.map(sim_worker, sim_tasks, callback=sim_callback):
         pass
 
+    # ---------------------------------------------------------------------------------
     # Make plots:
     with h5py.File(cache_file, mode="r") as f:
-        sim_keys = f.keys()
+        sim_keys = list(f.keys())
+        stream = gd.PhaseSpacePosition.from_hdf5(f["init/stream"])
+        impact_site = gd.PhaseSpacePosition.from_hdf5(f["init/impact_site"])
 
     print(f"{len(sim_keys)} simulations to plot...")
+
+    stream_sfr = get_in_stream_frame(stream, impact_site)
+    tracks = get_stream_track(stream_sfr, lon_lim=(-45, 45))
+
+    plot_tasks = [
+        (
+            i,
+            cache_file,
+            sim_key,
+            stream_sfr.replicate_without_data(),
+            tracks,
+            plot_path,
+            overwrite,
+        )
+        for i, sim_key in enumerate(sim_keys)
+    ]
+
+    for _ in pool.map(plot_worker, plot_tasks):
+        pass
 
 
 if __name__ == "__main__":
