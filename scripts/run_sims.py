@@ -100,7 +100,9 @@ def sim_callback(res):
 def plot_worker(task):
     i, cache_file, sim_key, stream_frame, tracks, plot_path, overwrite = task
 
-    plot_filename_base = plot_path / f"stream-{int(sim_key):04d}"
+    if sim_key != "init":
+        sim_key = int(sim_key)
+    plot_filename_base = plot_path / f"stream-{sim_key:04d}"
     filenames = {
         "xy": pathlib.Path(f"{str(plot_filename_base)}-xy.png"),
         "sky-all": pathlib.Path(f"{str(plot_filename_base)}-sky-all.png"),
@@ -177,7 +179,7 @@ def plot_worker(task):
 
         ax = axes[-1]
         ax.text(
-            30,
+            20,
             lims[-1][1] * 0.9,
             par_summary_text,
             ha="left",
@@ -218,7 +220,7 @@ def plot_worker(task):
 
         ax = axes[-1]
         ax.text(
-            30,
+            20,
             lims[-1][1] * 0.9,
             par_summary_text,
             ha="left",
@@ -259,9 +261,9 @@ def main(pool, overwrite=False):
     sim_kw = dict(
         mw_potential=mw,
         final_prog_w=wf,
-        M_stream=5e4 * u.Msun,
+        M_stream=8e4 * u.Msun,
         t_pre_impact=3 * u.Gyr,
-        dt=0.25 * u.Myr,
+        dt=0.5 * u.Myr,
         n_particles=4,
         seed=42,
     )
@@ -303,7 +305,7 @@ def main(pool, overwrite=False):
         (rng.uniform(size=3), rng.uniform(size=3)),
     ]
     par_tasks = list(product(Ms, vs, b_facs, ts, rand_dxdvs))
-    par_tasks = par_tasks[:128]  # TODO: REMOVE ME
+    # par_tasks = par_tasks[:128]  # TODO: REMOVE ME
 
     sim_tasks = [
         (i, pars, sim_kw, impact_site, cache_file, overwrite)
