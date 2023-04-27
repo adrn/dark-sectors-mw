@@ -193,7 +193,9 @@ class StreamSubhaloSimulation:
             dt=impact_dt,
             t1=self.t_pre_impact - t_buffer_impact,
             t2=buffer_t2,
-        )
+        )[
+            1:
+        ]  # remove subhalo particle
         if buffer_t2 != final_time:
             stream_after_impact = self.H.integrate_orbit(
                 stream_impact,
