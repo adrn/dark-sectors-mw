@@ -16,6 +16,8 @@ def plot_sky_projections(
     hist2d_n_ybins=151,
     scatter=False,
     scatter_kwargs=None,
+    axes=None,
+    xlabel=True,
 ):
     lon = stream_sfr.lon.wrap_at(180 * u.deg).degree
     _mask = (lon > xlim[0]) & (lon < xlim[1])
@@ -50,13 +52,17 @@ def plot_sky_projections(
     scatter_kwargs.setdefault("alpha", 0.5)
     scatter_kwargs.setdefault("linewidth", scatter_kwargs.pop("lw", 0.0))
 
-    fig, axes = plt.subplots(
-        len(components),
-        1,
-        figsize=(16, 4 * len(components)),
-        sharex=True,
-        constrained_layout=True,
-    )
+    if axes is None:
+        fig, axes = plt.subplots(
+            len(components),
+            1,
+            figsize=(16, 4 * len(components)),
+            sharex=True,
+            constrained_layout=True,
+        )
+    else:
+        fig = axes[0].figure
+
     for ax, comp in zip(axes, components):
         ylim = ylims[comp]
 
@@ -73,6 +79,7 @@ def plot_sky_projections(
         ax.set_ylim(ylim)
         ax.set_ylabel(comp)
 
-    axes[-1].set(xlim=xlim, xlabel="longitude [deg]")
+    if label:
+        axes[-1].set(xlim=xlim, xlabel="longitude [deg]")
 
     return fig, axes
