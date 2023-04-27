@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from gala.units import galactic
 from schwimmbad import MultiPool
+from streamsubhaloplot import plot_sky_projections
 from streamsubhalosim import (
     StreamSubhaloSimulation,
     get_in_stream_frame,
@@ -65,7 +66,9 @@ def sim_worker(task):
 
     pars = {
         "M_subhalo": M_subhalo,
+        "c_subhalo": c_subhalo,
         "impact_v": impact_v,
+        "impact_b_fac": impact_b_fac,
         "impact_b": impact_b,
         "t_post_impact": t_post_impact,
         "dx": dx,
@@ -153,40 +156,18 @@ def plot_worker(task):
     if not filenames["sky-all"].exists() or overwrite:
         # ----------------------------------------
         # sky projection, all simulated particles:
-        xlim = (-45, 45)
         stream_sfr = get_in_stream_frame(stream, impact_site, stream_frame=stream_frame)
 
-        lon = stream_sfr.lon.wrap_at(180 * u.deg).degree
-        _mask = (lon > xlim[0]) & (lon < xlim[1])
-
-        fig, axes = plt.subplots(
-            5, 1, figsize=(16, 20), sharex=True, constrained_layout=True
-        )
-
-        comps = ["lat", "distance", "pm_lon_coslat", "pm_lat", "radial_velocity"]
-        lims = [(-1, 1), (20, 26), (0, 1), (-0.2, 0.1), (-225, 100)]
-        for ax, comp, ylim in zip(axes, comps, lims):
-            ax.hist2d(
-                lon[_mask],
-                getattr(stream_sfr, comp).value[_mask],
-                bins=(np.linspace(*xlim, 512), np.linspace(*ylim, 151)),
-                norm=mpl.colors.LogNorm(vmin=0.1),
-                cmap="Greys",
-            )
-            if ylim is not None:
-                ax.set_ylim(ylim)
-            ax.set_ylabel(comp)
-
+        fig, axes = plot_sky_projections(stream_sfr)
         ax = axes[-1]
         ax.text(
             20,
-            lims[-1][1] * 0.9,
+            ax.get_ylim()[1] * 0.9,
             par_summary_text,
             ha="left",
             va="top",
         )
-
-        axes[-1].set(xlim=xlim, xlabel="longitude [deg]")
+        ax.set_xlabel("longitude [deg]")
         fig.suptitle("all simulated particles", fontsize=22)
         fig.savefig(filenames["sky-all"], dpi=200)
         plt.close(fig)
@@ -194,40 +175,18 @@ def plot_worker(task):
     if not filenames["sky-all-dtrack"].exists() or overwrite:
         # ------------------------------------------------------------
         # sky projection, all simulated particles, relative to tracks:
-        xlim = (-45, 45)
         stream_sfr = get_in_stream_frame(stream, impact_site, stream_frame=stream_frame)
 
-        lon = stream_sfr.lon.wrap_at(180 * u.deg).degree
-        _mask = (lon > xlim[0]) & (lon < xlim[1])
-
-        fig, axes = plt.subplots(
-            5, 1, figsize=(16, 20), sharex=True, constrained_layout=True
-        )
-
-        comps = ["lat", "distance", "pm_lon_coslat", "pm_lat", "radial_velocity"]
-        lims = [(-1, 1), (-1.5, 1.5), (-0.15, 0.15), (-0.15, 0.15), (-10, 10)]
-        for ax, comp, ylim in zip(axes, comps, lims):
-            ax.hist2d(
-                lon[_mask],
-                getattr(stream_sfr, comp).value[_mask] - tracks[comp](lon[_mask]),
-                bins=(np.linspace(*xlim, 512), np.linspace(*ylim, 151)),
-                norm=mpl.colors.LogNorm(vmin=0.1),
-                cmap="Greys",
-            )
-            if ylim is not None:
-                ax.set_ylim(ylim)
-            ax.set_ylabel(comp)
-
+        fig, axes = plot_sky_projections(stream_sfr, tracks=tracks)
         ax = axes[-1]
         ax.text(
             20,
-            lims[-1][1] * 0.9,
+            ax.get_ylim()[1] * 0.9,
             par_summary_text,
             ha="left",
             va="top",
         )
-
-        axes[-1].set(xlim=xlim, xlabel="longitude [deg]")
+        ax.set_xlabel("longitude [deg]")
         fig.suptitle("all simulated particles", fontsize=22)
         fig.savefig(filenames["sky-all-dtrack"], dpi=200)
         plt.close(fig)
@@ -242,6 +201,7 @@ def main(pool, overwrite=False):
     cache_file = cache_path / "stream-sims.hdf5"
     plot_path = cache_path / "plots"
     plot_path.mkdir(exist_ok=True, parents=True)
+    meta_path = cache_path / "stream-sims-metadata.fits"
 
     # Ensure that cache file exists"
     mode = "a" if not overwrite else "w"
@@ -262,9 +222,9 @@ def main(pool, overwrite=False):
         mw_potential=mw,
         final_prog_w=wf,
         M_stream=8e4 * u.Msun,
-        t_pre_impact=3 * u.Gyr,
+        t_pre_impact=4 * u.Gyr,
         dt=0.5 * u.Myr,
-        n_particles=4,
+        n_particles=5,
         seed=42,
     )
 
@@ -305,7 +265,6 @@ def main(pool, overwrite=False):
         (rng.uniform(size=3), rng.uniform(size=3)),
     ]
     par_tasks = list(product(Ms, vs, b_facs, ts, rand_dxdvs))
-    # par_tasks = par_tasks[:128]  # TODO: REMOVE ME
 
     sim_tasks = [
         (i, pars, sim_kw, impact_site, cache_file, overwrite)
@@ -314,6 +273,22 @@ def main(pool, overwrite=False):
 
     for _ in pool.map(sim_worker, sim_tasks, callback=sim_callback):
         pass
+
+    # Make a summary table with the simulation parameters:
+    if not meta_path.exists() or overwrite:
+        print("Making metadata table...")
+
+        allpars = []
+        with h5py.File(cache_file, mode="r") as f:
+            for k in f.keys():
+                if k == "init":
+                    continue
+                pars = at.QTable.read(f, path=f"{k}/parameters")
+                pars["id"] = int(k)
+                allpars.append(pars)
+
+        allpars = at.vstack(allpars)
+        allpars.write(meta_path, overwrite=True)
 
     # ---------------------------------------------------------------------------------
     # Make plots:
