@@ -79,7 +79,7 @@ def plot_sky_projections(
         ax.set_ylim(ylim)
         ax.set_ylabel(comp)
 
-    if label:
+    if xlabel:
         axes[-1].set(xlim=xlim, xlabel="longitude [deg]")
 
     return fig, axes
