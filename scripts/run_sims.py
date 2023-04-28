@@ -7,11 +7,9 @@ import astropy.units as u
 import gala.dynamics as gd
 import gala.potential as gp
 import h5py
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from gala.units import galactic
-from schwimmbad import MultiPool
 from streamsubhaloplot import plot_sky_projections
 from streamsubhalosim import (
     StreamSubhaloSimulation,
@@ -199,7 +197,7 @@ def main(pool, dist, overwrite=False):
 
     # Make a cache directory to save the simulation output:
     cache_path = (pathlib.Path(__file__).parent / "../cache").resolve().absolute()
-    cache_path = cache_path / "dist-{:.0f}kpc".format(dist.to_value(u.kpc))
+    cache_path = cache_path / "dist-{:.0f}kpc".format(dist)
     cache_file = cache_path / "stream-sims.hdf5"
     plot_path = cache_path / "plots"
     plot_path.mkdir(exist_ok=True, parents=True)
@@ -328,10 +326,32 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--nproc", type=int, default=None)
+
+    grp = parser.add_mutually_exclusive_group()
+    grp.add_argument("--nproc", type=int, default=None)
+    grp.add_argument("--mpi", action="store_true", default=False)
+
     parser.add_argument("--dist", type=float, default=None, required=True)
     parser.add_argument("-o", "--overwrite", action="store_true", default=False)
     args = parser.parse_args()
 
-    with MultiPool(processes=args.nproc) as pool:
+    if args.mpi:
+        # from schwimmbad.mpi import MPIAsyncPool
+        from schwimmbad.mpi import MPIPool
+
+        # Pool = MPIAsyncPool
+        Pool = MPIPool
+        Pool_kw = dict()
+    elif args.nproc is not None:
+        from schwimmbad import MultiPool
+
+        Pool = MultiPool
+        Pool_kw = dict(processes=args.nproc)
+    else:
+        from schwimmbad import SerialPool
+
+        Pool = SerialPool
+        Pool_kw = dict()
+
+    with Pool(**Pool_kw) as pool:
         main(pool, dist=args.dist, overwrite=args.overwrite)
