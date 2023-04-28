@@ -49,7 +49,7 @@ def sim_worker(task):
     MAGIC = 32
     print(f"[{i}]: starting simulation...")
     time0 = time.time()
-    stream, _ = sim.run_perturbed_stream(
+    stream, _, final_prog = sim.run_perturbed_stream(
         impact_site_w=impact_site,
         subhalo_impact_dw=gd.PhaseSpacePosition(dx, dv),
         subhalo_potential=gp.HernquistPotential(
@@ -76,14 +76,14 @@ def sim_worker(task):
         "dx_hat": dxhat,
         "dv_hat": dvhat,
     }
-    return f"{i}", cache_file, stream, impact_site, pars
+    return f"{i}", cache_file, stream, impact_site, final_prog, pars
 
 
 def sim_callback(res):
     if res is None:
         return
 
-    name, cache_file, stream, impact_site, pars = res
+    name, cache_file, stream, impact_site, final_prog, pars = res
     with h5py.File(cache_file, mode="r+") as f:
         if name in f:
             del f[name]
@@ -97,6 +97,7 @@ def sim_callback(res):
             t.write(group, serialize_meta=True, path="/parameters")
 
         stream.to_hdf5(group.create_group("stream"))
+        final_prog.to_hdf5(group.create_group("prog"))
         impact_site.to_hdf5(group.create_group("impact_site"))
 
 
@@ -192,12 +193,13 @@ def plot_worker(task):
         plt.close(fig)
 
 
-def main(pool, overwrite=False):
+def main(pool, dist, overwrite=False):
     print(f"Setting up job with n={pool.size} processes...")
     rng = np.random.default_rng(123)
 
     # Make a cache directory to save the simulation output:
     cache_path = (pathlib.Path(__file__).parent / "../cache").resolve().absolute()
+    cache_path = cache_path / "dist-{:.0f}kpc".format(dist.to_value(u.kpc))
     cache_file = cache_path / "stream-sims.hdf5"
     plot_path = cache_path / "plots"
     plot_path.mkdir(exist_ok=True, parents=True)
@@ -215,14 +217,16 @@ def main(pool, overwrite=False):
     )
 
     # Final phase-space coordinates of the progenitor:
-    wf = gd.PhaseSpacePosition(pos=[15, 0.0, 0.0] * u.kpc, vel=[0, 275, 0] * u.km / u.s)
+    pos = [-8, 0, dist] * u.kpc
+    vcirc = mw.circular_velocity(pos)[0]
+    wf = gd.PhaseSpacePosition(pos=pos, vel=[0, 1.3, 0] * vcirc)
 
     # Simulation parameters:
     sim_kw = dict(
         mw_potential=mw,
         final_prog_w=wf,
         M_stream=8e4 * u.Msun,
-        t_pre_impact=4 * u.Gyr,
+        t_pre_impact=6 * u.Gyr,
         dt=0.5 * u.Myr,
         n_particles=5,
         seed=42,
@@ -244,7 +248,7 @@ def main(pool, overwrite=False):
         impact_site = sim.get_impact_site(init_stream, init_prog)
 
         # Save to cache file:
-        sim_callback(("init", cache_file, init_stream, impact_site, {}))
+        sim_callback(("init", cache_file, init_stream, impact_site, init_prog[0], {}))
 
     else:
         with h5py.File(cache_file, mode="r") as f:
@@ -295,11 +299,12 @@ def main(pool, overwrite=False):
     with h5py.File(cache_file, mode="r") as f:
         sim_keys = list(f.keys())
         stream = gd.PhaseSpacePosition.from_hdf5(f["init/stream"])
+        prog = gd.PhaseSpacePosition.from_hdf5(f["init/prog"])
         impact_site = gd.PhaseSpacePosition.from_hdf5(f["init/impact_site"])
 
     print(f"{len(sim_keys)} simulations to plot...")
 
-    stream_sfr = get_in_stream_frame(stream, impact_site)
+    stream_sfr = get_in_stream_frame(stream, impact_site, prog=prog)
     tracks = get_stream_track(stream_sfr, lon_lim=(-45, 45))
 
     plot_tasks = [
@@ -324,8 +329,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--nproc", type=int, default=None)
+    parser.add_argument("--dist", type=float, default=None, required=True)
     parser.add_argument("-o", "--overwrite", action="store_true", default=False)
     args = parser.parse_args()
 
     with MultiPool(processes=args.nproc) as pool:
-        main(pool, overwrite=args.overwrite)
+        main(pool, dist=args.dist, overwrite=args.overwrite)
