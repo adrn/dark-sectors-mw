@@ -1,10 +1,9 @@
 import astropy.coordinates as coord
-import astropy.table as at
 import astropy.units as u
+import gala.coordinates as gc
 import gala.dynamics as gd
 import gala.integrate as gi
 import gala.potential as gp
-import h5py
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -208,7 +207,7 @@ class StreamSubhaloSimulation:
         else:
             stream_after_impact = stream_impact
 
-        unpert_stream_post, _ = self._mockstream_gen.run(
+        unpert_stream_post, final_prog = self._mockstream_gen.run(
             prog_w_buffer_pre[0],
             self.M_stream,
             dt=self.dt,
@@ -217,20 +216,28 @@ class StreamSubhaloSimulation:
             **self._mockstream_kw,
         )
 
-        return stream_after_impact, unpert_stream_post
+        return stream_after_impact, unpert_stream_post, final_prog[0]
 
 
-def get_in_stream_frame(stream, w_impact_end, stream_frame=None):
+def get_in_stream_frame(stream, prog=None, impact=None, stream_frame=None):
     stream_galcen = coord.Galactocentric(stream.data)
-    stream_gal = stream_galcen.transform_to(coord.Galactic())
+    stream_icrs = stream_galcen.transform_to(coord.ICRS())
 
     if stream_frame is None:
-        perturb_end_galcen = coord.Galactocentric(w_impact_end.data)
-        perturb_end_gal = perturb_end_galcen.transform_to(coord.Galactic())
+        if impact is None or prog is None:
+            raise ValueError("Must provide impact and prog to get stream frame")
 
-        stream_frame = coord.SkyOffsetFrame(origin=perturb_end_gal)
+        origin_pt = impact.to_coord_frame(coord.ICRS())
+        other_pt = prog.to_coord_frame(coord.ICRS())
 
-    stream_sfr = stream_gal.transform_to(stream_frame)
+        new_xhat = origin_pt.data.xyz / np.linalg.norm(origin_pt.data.xyz)
+        new_yhat = origin_pt.data.xyz - other_pt.data.xyz
+        new_yhat = new_yhat / np.linalg.norm(new_yhat)
+        new_zhat = np.cross(new_xhat, new_yhat)
+        R = np.stack((new_xhat, new_yhat, new_zhat)).T
+        stream_frame = gc.GreatCircleICRSFrame.from_R(R.T)
+
+    stream_sfr = stream_icrs.transform_to(stream_frame)
     return stream_sfr
 
 
@@ -239,7 +246,7 @@ def get_stream_track(stream_sfr, lon_lim=None, plot_debug=False):
     Given a stream simulation in a rotated stream frame, compute the smoothed stream
     track in each coordinate component.
     """
-    x = stream_sfr.lon.wrap_at(180 * u.deg).degree
+    x = stream_sfr.phi1.wrap_at(180 * u.deg).degree
     if lon_lim is None:
         lon_lim = (x.min(), x.max())
     lon_mask = (x >= lon_lim[0]) & (x <= lon_lim[1])
@@ -255,7 +262,7 @@ def get_stream_track(stream_sfr, lon_lim=None, plot_debug=False):
         (np.linspace(*xtend1, N1), bins[1:-1], np.linspace(*xtend2, N2))
     )
 
-    comps = ["lat", "distance", "pm_lon_coslat", "pm_lat", "radial_velocity"]
+    comps = ["phi2", "distance", "pm_phi1_cosphi2", "pm_phi2", "radial_velocity"]
 
     tracks = {}
     for comp in comps:
