@@ -293,7 +293,7 @@ def main(pool, dist, overwrite=False):
 
     print(f"{len(allfilenames)} simulations to plot...")
 
-    stream_sfr = get_in_stream_frame(stream, impact=impact_site, prog=prog)
+    stream_sfr = get_in_stream_frame(stream, impact=impact_site, prog=prog[0])
     tracks = get_stream_track(stream_sfr, lon_lim=(-45, 45))
 
     plot_tasks = [
