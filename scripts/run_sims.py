@@ -260,21 +260,29 @@ def main(pool, dist, overwrite=False):
         pass
 
     # Make a summary table with the simulation parameters:
-    print("Making metadata table...")
+    allfilenames = sorted(glob.glob(str(cache_path / "stream-sim-*.hdf5")))
 
-    allfilenames = []
-    allpars = []
-    for filename in glob.glob(str(cache_path / "stream-sim-*.hdf5")):
-        filename = pathlib.Path(filename)
-        if "init" in filename.parts[-1]:
-            continue
+    make_meta = False
+    if meta_path.exists():
+        meta = at.QTable.read(meta_path)
+        if len(meta) != len(allfilenames) or overwrite:
+            make_meta = True
+        else:
+            print("Metadata table already exists...")
 
-        pars = at.QTable.read(filename, path="/parameters")
-        allpars.append(pars)
-        allfilenames.append(filename)
+    if not meta_path.exists() or make_meta:
+        print("Making metadata table...")
+        allpars = []
+        for filename in allfilenames:
+            filename = pathlib.Path(filename)
+            if "init" in filename.parts[-1]:
+                continue
 
-    allpars = at.vstack(allpars)
-    allpars.write(meta_path, overwrite=True)
+            pars = at.QTable.read(filename, path="/parameters")
+            allpars.append(pars)
+
+        allpars = at.vstack(allpars)
+        allpars.write(meta_path, overwrite=True)
 
     # ---------------------------------------------------------------------------------
     # Make plots:
