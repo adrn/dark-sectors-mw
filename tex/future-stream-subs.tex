@@ -91,9 +91,22 @@ In this Article, we explore ...
 
 \section{Methods} \label{sec:methods}
 
+We study the observability of dark matter subhalo impacts in stellar streams by running
+dynamical simulations of stream--subhalo encounters using a standard ``mock stream''
+simulation method coupled with an \nbody\ perturber (the subhalo).
+We then simulate observations of stars in these streams by generating a stellar population for the stream with
+
+a and observational uncertainties.
+
+
 Summary of pipeline: run simulation, use IMF and isochrone to put stellar population on stream model, pick error model and "observe."
 
 \subsection{Stellar Stream + Subhalo Simulations} \label{sec:streams}
+
+We simulate the impact of dark matter subhalos on stellar streams using an approximate
+\nbody\ scheme that is implemented using the \gala\ Python package \citep{gala}.
+
+``mock stream'' simulations that approximate the tidal disruption process of a globular cluster
 
 Gala simulations. Setup, etc.
 
@@ -102,7 +115,19 @@ Gala simulations. Setup, etc.
 \includegraphics[width=\textwidth]{example-image-a} % {illustrate-zvz.pdf}
 \end{center}
 \caption{%
-A gallery of stellar stream models that have been perturbed by dark matter subhalos of varying mass, all with the same encounter geometry, relative velocity, and fractional impact parameter (i.e. the impact parameter in physical units is a constant factor times the scale radius of each subhalo, which is set by its mass).
+A gallery of stellar stream models that have been perturbed by dark matter subhalos of
+varying mass, all with the same encounter geometry, relative velocity, and fractional
+impact parameter (i.e. the impact parameter is a constant factor times the scale radius
+of each subhalo, which is set by its mass) shown in sky coordinates oriented with the
+stream (longitude $\phi_1$ and latitude $\phi_2$).
+The unperturbed stream model is shown in the top panel, and all simulated streams have
+the same number of particles.
+The progenitor systems are not simulated and the region where the progenitor would be
+corresponds to the under-density of star particles near longitude $\phi_1 \sim
+-20^\circ$) in each panel.
+In all cases (apart from the unperturbed model), the impact site has been rotated to be
+at $\phi_1 \approx 0^\circ$.
+TODO: takeaway point...
 \label{fig:simgallery}
 }
 \end{figure*}
