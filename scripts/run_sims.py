@@ -336,11 +336,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.mpi:
-        # from schwimmbad.mpi import MPIAsyncPool
-        from schwimmbad.mpi import MPIPool
+        from custommpipool import MPIPoolExecutor
 
-        # Pool = MPIAsyncPool
-        Pool = MPIPool
+        Pool = MPIPoolExecutor
         Pool_kw = dict()
     elif args.nproc is not None:
         from schwimmbad import MultiPool
