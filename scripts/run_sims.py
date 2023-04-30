@@ -279,9 +279,9 @@ def main(pool, dist, overwrite=False):
     # ---------------------------------------------------------------------------------
     # Make plots:
     with h5py.File(init_cache_file, mode="r") as f:
-        stream = gd.PhaseSpacePosition.from_hdf5(["stream"])
-        prog = gd.PhaseSpacePosition.from_hdf5(["prog"])
-        impact_site = gd.PhaseSpacePosition.from_hdf5(["impact_site"])
+        stream = gd.PhaseSpacePosition.from_hdf5(f["stream"])
+        prog = gd.PhaseSpacePosition.from_hdf5(f["prog"])
+        impact_site = gd.PhaseSpacePosition.from_hdf5(f["impact_site"])
 
     print(f"{len(allfilenames)} simulations to plot...")
 
