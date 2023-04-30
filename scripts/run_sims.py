@@ -185,11 +185,13 @@ def main(pool, dist, overwrite=False):
     rng = np.random.default_rng(123)
 
     # Make a cache directory to save the simulation output:
-    cache_path = (pathlib.Path(__file__).parent / "../cache").resolve().absolute()
-    cache_path = cache_path / "dist-{:.0f}kpc".format(dist)
-    plot_path = cache_path / "plots"
+    root_cache_path = (pathlib.Path(__file__).parent / "../cache").resolve().absolute()
+    root_cache_path = root_cache_path / "dist-{:.0f}kpc".format(dist)
+    plot_path = root_cache_path / "plots"
     plot_path.mkdir(exist_ok=True, parents=True)
-    meta_path = cache_path / "stream-sims-metadata.fits"
+    cache_path = root_cache_path / "sims"
+    cache_path.mkdir(exist_ok=True, parents=True)
+    meta_path = root_cache_path / "stream-sims-metadata.fits"
 
     # Default potential model:
     mw = gp.load(
