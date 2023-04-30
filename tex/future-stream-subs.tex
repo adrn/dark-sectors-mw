@@ -1,0 +1,142 @@
+% Notes:
+% -
+
+% \begin{figure}[!t]
+% \begin{center}
+% % \includegraphics[width=0.9\textwidth]{visitstats.pdf}
+% {\color{red} Figure placeholder}
+% \end{center}
+% \caption{%
+% TODO
+% \label{fig:chiplots}
+% }
+% \end{figure}
+
+\PassOptionsToPackage{usenames,dvipsnames}{xcolor}
+\documentclass[modern]{aastex631}
+% \documentclass[twocolumn]{aastex631}
+
+% Load common packages
+\usepackage{microtype}  % ALWAYS!
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+% \usepackage{color}
+
+\usepackage{enumitem}
+\setlist[description]{style=unboxed}
+
+\graphicspath{{figures/}}
+\input{preamble.tex}
+
+\shorttitle{}
+\shortauthors{Price-Whelan \& Bonaca}
+
+\begin{document}
+
+\title{
+    Detecting Dark Matter Substructures in the Milky Way with Stellar Streams
+}
+
+\newcommand{\affcca}{
+    Center for Computational Astrophysics, Flatiron Institute, \\
+    162 Fifth Ave, New York, NY 10010, USA
+}
+
+\newcommand{\affcarnegie}{
+    TODO
+}
+
+\author[0000-0003-0872-7098]{Adrian~M.~Price-Whelan}
+\affiliation{\affcca}
+\email{aprice-whelan@flatironinstitute.org}
+\correspondingauthor{Adrian M. Price-Whelan}
+
+\author{Ana~Bonaca}
+\affiliation{\affcarnegie}
+
+
+\begin{abstract}\noindent
+% Context
+
+% Aims
+
+% Methods
+
+% Results
+
+% Conclusions
+
+
+\end{abstract}
+
+% \keywords{}
+
+\section{Introduction} \label{sec:intro}
+
+- Dark matter importance / intro.
+- Until DM directly detected, and even after, future of constraining DM models is astrophysical
+- Know DM halos to $10^8$-–$10^9$ from dwarf galaxies / satellites
+- DM models diverge at lower masses - finding low mass substructures would be a huge step forward in constraining DM models.
+- Goal of constraining number density of $10^6$ Msun subhalos within reach
+
+- Milky Way is the best place to search for signatures of dark matter substructure.
+- Other methods are cool, but don't go as low in halo mass.
+- Stellar streams blah blah
+- Extragalactic streams far future. Need density contrast. Milky Way is the place to focus effort now.
+
+In this Article, we explore ...
+
+\section{Methods} \label{sec:methods}
+
+Summary of pipeline: run simulation, use IMF and isochrone to put stellar population on stream model, pick error model and "observe."
+
+\subsection{Stellar Stream + Subhalo Simulations} \label{sec:streams}
+
+Gala simulations. Setup, etc.
+
+\begin{figure*}[!th]
+\begin{center}
+\includegraphics[width=\textwidth]{example-image-a} % {illustrate-zvz.pdf}
+\end{center}
+\caption{%
+A gallery of stellar stream models that have been perturbed by dark matter subhalos of varying mass, all with the same encounter geometry, relative velocity, and fractional impact parameter (i.e. the impact parameter in physical units is a constant factor times the scale radius of each subhalo, which is set by its mass).
+\label{fig:simgallery}
+}
+\end{figure*}
+
+\subsection{Stellar Populations} \label{sec:stellarpops}
+
+TODO
+
+\section{Results} \label{sec:results}
+
+
+\section{Discussion} \label{sec:discussion}
+
+
+\section{Summary and Conclusions} \label{sec:conclusions}
+
+
+\begin{acknowledgements}
+
+It is a pleasure to thank the CCA Galactic Dynamics Group...
+
+
+\end{acknowledgements}
+
+\software{
+    Astropy \citep{astropy:2013, astropy:2018, astropy:2022},
+    gala \citep{gala},
+    IPython \citep{ipython},
+    numpy \citep{numpy},
+    schwimmbad \citep{schwimmbad:2017},
+    scipy \citep{scipy}.
+}
+
+\bibliographystyle{aasjournal}
+\bibliography{fss}
+
+\end{document}

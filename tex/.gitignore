@@ -1,0 +1,12 @@
+data
+scripts/*.ipynb
+
+# Ignore all latex temporary output:
+*.aux
+*.bbl
+*.blg
+*.fls
+*.log
+*.synctex.gz
+*.fdb_latexmk
+*.out
