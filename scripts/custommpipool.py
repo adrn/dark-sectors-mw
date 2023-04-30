@@ -56,7 +56,8 @@ class MPIPoolExecutor(Executor):
         self._lock = threading.Lock()
         self._pool = None
 
-        self.size = self._comm.Get_size() - 1
+        _comm = _lib.get_comm_world()
+        self.size = _comm.Get_size() - 1
 
     _make_pool = staticmethod(_lib.WorkerPool)
 
