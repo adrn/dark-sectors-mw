@@ -215,9 +215,9 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
         mw_potential=mw,
         final_prog_w=wf,
         M_stream=8e4 * u.Msun,
-        t_pre_impact=4 * u.Gyr,
-        dt=0.5 * u.Myr,
-        n_particles=4,
+        t_pre_impact=5 * u.Gyr,
+        dt=0.25 * u.Myr,
+        n_particles=6,
         seed=42,
     )
 
@@ -309,7 +309,7 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
             stream_sfr.replicate_without_data(),
             tracks,
             plot_path,
-            overwrite_plots,
+            overwrite or overwrite_plots,
         )
         for pars, cache_file in zip(allpars, allfilenames)
     ]
