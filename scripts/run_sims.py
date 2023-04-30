@@ -76,6 +76,7 @@ def sim_worker(task):
         "dv": dv,
         "dx_hat": dxhat,
         "dv_hat": dvhat,
+        "filename": str(cache_file),
     }
 
     with h5py.File(cache_file, mode="w") as f:
@@ -174,13 +175,18 @@ def plot_worker(task):
             ha="left",
             va="top",
         )
+
+        ylims = [(-2, 2), (-1.5, 1.5), (-0.25, 0.25), (-0.25, 0.25), (-12, 12)]
+        for ax, ylim in zip(axes, ylims):
+            ax.set_ylim(ylim)
+
         ax.set_xlabel("longitude [deg]")
         fig.suptitle("all simulated particles", fontsize=22)
         fig.savefig(filenames["sky-all-dtrack"], dpi=200)
         plt.close(fig)
 
 
-def main(pool, dist, overwrite=False):
+def main(pool, dist, overwrite=False, overwrite_plots=False):
     print(f"Setting up job with n={pool.size} processes...")
     rng = np.random.default_rng(123)
 
@@ -303,7 +309,7 @@ def main(pool, dist, overwrite=False):
             stream_sfr.replicate_without_data(),
             tracks,
             plot_path,
-            overwrite,
+            overwrite_plots,
         )
         for pars, cache_file in zip(allpars, allfilenames)
     ]
@@ -323,6 +329,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--dist", type=float, default=None, required=True)
     parser.add_argument("-o", "--overwrite", action="store_true", default=False)
+    parser.add_argument("--overwriteplots", action="store_true", default=False)
     args = parser.parse_args()
 
     if args.mpi:
@@ -342,4 +349,9 @@ if __name__ == "__main__":
         Pool_kw = dict()
 
     with Pool(**Pool_kw) as pool:
-        main(pool, dist=args.dist, overwrite=args.overwrite)
+        main(
+            pool,
+            dist=args.dist,
+            overwrite=args.overwrite,
+            overwrite_plots=args.overwriteplots,
+        )
