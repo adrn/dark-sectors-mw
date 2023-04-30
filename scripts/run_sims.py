@@ -265,7 +265,7 @@ def main(pool, dist, overwrite=False):
     make_meta = False
     if meta_path.exists():
         meta = at.QTable.read(meta_path)
-        if len(meta) != len(allfilenames) or overwrite:
+        if (len(meta) != (len(allfilenames) - 1)) or overwrite:
             make_meta = True
         else:
             print("Metadata table already exists...")
