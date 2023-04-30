@@ -19,11 +19,11 @@ def plot_sky_projections(
     axes=None,
     xlabel=True,
 ):
-    lon = stream_sfr.lon.wrap_at(180 * u.deg).degree
+    lon = stream_sfr.phi1.wrap_at(180 * u.deg).degree
     _mask = (lon > xlim[0]) & (lon < xlim[1])
 
     if components is None:
-        components = ["lat", "distance", "pm_lon_coslat", "pm_lat", "radial_velocity"]
+        components = ["phi2", "distance", "pm_phi1_cosphi2", "pm_phi2", "radial_velocity"]
 
     # Make data either by getting component data, or computing relative to tracks:
     ys = {}
@@ -80,6 +80,6 @@ def plot_sky_projections(
         ax.set_ylabel(comp)
 
     if xlabel:
-        axes[-1].set(xlim=xlim, xlabel="longitude [deg]")
+        axes[-1].set(xlim=xlim, xlabel=r"stream longitude $\phi_1$ [deg]")
 
     return fig, axes

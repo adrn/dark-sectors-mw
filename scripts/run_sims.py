@@ -155,7 +155,7 @@ def plot_worker(task):
     if not filenames["sky-all"].exists() or overwrite:
         # ----------------------------------------
         # sky projection, all simulated particles:
-        stream_sfr = get_in_stream_frame(stream, impact_site, stream_frame=stream_frame)
+        stream_sfr = get_in_stream_frame(stream, stream_frame=stream_frame)
 
         fig, axes = plot_sky_projections(stream_sfr)
         ax = axes[-1]
@@ -174,7 +174,7 @@ def plot_worker(task):
     if not filenames["sky-all-dtrack"].exists() or overwrite:
         # ------------------------------------------------------------
         # sky projection, all simulated particles, relative to tracks:
-        stream_sfr = get_in_stream_frame(stream, impact_site, stream_frame=stream_frame)
+        stream_sfr = get_in_stream_frame(stream, stream_frame=stream_frame)
 
         fig, axes = plot_sky_projections(stream_sfr, tracks=tracks)
         ax = axes[-1]
@@ -224,12 +224,13 @@ def main(pool, dist, overwrite=False):
         mw_potential=mw,
         final_prog_w=wf,
         M_stream=8e4 * u.Msun,
-        t_pre_impact=6 * u.Gyr,
+        t_pre_impact=4 * u.Gyr,
         dt=0.5 * u.Myr,
-        n_particles=5,
+        n_particles=4,
         seed=42,
     )
 
+    print(f"Loading cache file at {str(cache_file)}")
     with h5py.File(cache_file, mode="r+") as f:
         if "init" in f.keys() and overwrite:
             del f["init"]
@@ -277,20 +278,19 @@ def main(pool, dist, overwrite=False):
         pass
 
     # Make a summary table with the simulation parameters:
-    if not meta_path.exists() or overwrite:
-        print("Making metadata table...")
+    print("Making metadata table...")
 
-        allpars = []
-        with h5py.File(cache_file, mode="r") as f:
-            for k in f.keys():
-                if k == "init":
-                    continue
-                pars = at.QTable.read(f, path=f"{k}/parameters")
-                pars["id"] = int(k)
-                allpars.append(pars)
+    allpars = []
+    with h5py.File(cache_file, mode="r") as f:
+        for k in f.keys():
+            if k == "init":
+                continue
+            pars = at.QTable.read(f, path=f"{k}/parameters")
+            pars["id"] = int(k)
+            allpars.append(pars)
 
-        allpars = at.vstack(allpars)
-        allpars.write(meta_path, overwrite=True)
+    allpars = at.vstack(allpars)
+    allpars.write(meta_path, overwrite=True)
 
     # ---------------------------------------------------------------------------------
     # Make plots:
@@ -302,7 +302,7 @@ def main(pool, dist, overwrite=False):
 
     print(f"{len(sim_keys)} simulations to plot...")
 
-    stream_sfr = get_in_stream_frame(stream, impact_site, prog=prog)
+    stream_sfr = get_in_stream_frame(stream, impact=impact_site, prog=prog)
     tracks = get_stream_track(stream_sfr, lon_lim=(-45, 45))
 
     plot_tasks = [
