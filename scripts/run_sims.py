@@ -23,7 +23,7 @@ def sim_worker(task):
     i, pars, sim_kw, impact_site, cache_path, overwrite = task
     M_subhalo, impact_v, impact_b_fac, t_post_impact, dxdv = pars
 
-    cache_file = cache_path / "stream-sim-{i:04d}.hdf5"
+    cache_file = cache_path / f"stream-sim-{i:04d}.hdf5"
 
     if cache_file.exists() and not overwrite:
         return None
