@@ -1,3 +1,4 @@
+import glob
 import pathlib
 import time
 from itertools import product
@@ -19,12 +20,13 @@ from streamsubhalosim import (
 
 
 def sim_worker(task):
-    i, pars, sim_kw, impact_site, cache_file, overwrite = task
+    i, pars, sim_kw, impact_site, cache_path, overwrite = task
     M_subhalo, impact_v, impact_b_fac, t_post_impact, dxdv = pars
 
-    with h5py.File(cache_file, mode="r") as f:
-        if f"{i}" in f.keys() and not overwrite:
-            return None
+    cache_file = cache_path / "stream-sim-{i:04d}.hdf5"
+
+    if cache_file.exists() and not overwrite:
+        return None
 
     c_subhalo = 1.005 * u.kpc * (M_subhalo / (1e8 * u.Msun)) ** 0.5 / 2.0  # MAGIC
     impact_b = impact_b_fac * c_subhalo
@@ -63,6 +65,7 @@ def sim_worker(task):
     )
 
     pars = {
+        "id": i,
         "M_subhalo": M_subhalo,
         "c_subhalo": c_subhalo,
         "impact_v": impact_v,
@@ -74,37 +77,23 @@ def sim_worker(task):
         "dx_hat": dxhat,
         "dv_hat": dvhat,
     }
-    return f"{i}", cache_file, stream, impact_site, final_prog, pars
 
-
-def sim_callback(res):
-    if res is None:
-        return
-
-    name, cache_file, stream, impact_site, final_prog, pars = res
-    with h5py.File(cache_file, mode="r+") as f:
-        if name in f:
-            del f[name]
-
-        group = f.create_group(name)
-
+    with h5py.File(cache_file, mode="w") as f:
         if len(pars.keys()) > 0:
             t = at.QTable()
             for k, v in pars.items():
                 t[k] = [v]
-            t.write(group, serialize_meta=True, path="/parameters")
+            t.write(f, serialize_meta=True, path="/parameters")
 
-        stream.to_hdf5(group.create_group("stream"))
-        final_prog.to_hdf5(group.create_group("prog"))
-        impact_site.to_hdf5(group.create_group("impact_site"))
+        stream.to_hdf5(f.create_group("stream"))
+        final_prog.to_hdf5(f.create_group("prog"))
+        impact_site.to_hdf5(f.create_group("impact_site"))
 
 
 def plot_worker(task):
-    i, cache_file, sim_key, stream_frame, tracks, plot_path, overwrite = task
+    id_, cache_file, stream_frame, tracks, plot_path, overwrite = task
 
-    if sim_key != "init":
-        sim_key = int(sim_key)
-    plot_filename_base = plot_path / f"stream-{sim_key:04d}"
+    plot_filename_base = plot_path / f"stream-{id_:04d}"
     filenames = {
         "xy": pathlib.Path(f"{str(plot_filename_base)}-xy.png"),
         "sky-all": pathlib.Path(f"{str(plot_filename_base)}-sky-all.png"),
@@ -113,13 +102,13 @@ def plot_worker(task):
 
     with h5py.File(cache_file, "r") as f:
         # Read subhalo simulation parameters:
-        pars = at.QTable.read(cache_file, path=f"/{sim_key}/parameters")[0]
+        pars = at.QTable.read(cache_file, path="parameters")[0]
 
         # Read stream and impact site:
-        stream = gd.PhaseSpacePosition.from_hdf5(f[f"/{sim_key}/stream"])
-        impact_site = gd.PhaseSpacePosition.from_hdf5(f[f"/{sim_key}/impact_site"])
+        stream = gd.PhaseSpacePosition.from_hdf5(f["stream"])
+        impact_site = gd.PhaseSpacePosition.from_hdf5(f["impact_site"])
 
-    print(f"[{i}]: Plotting...")
+    print(f"[{id_}]: Plotting...")
     stream_style = dict(
         marker="o",
         ms=1.0,
@@ -198,15 +187,9 @@ def main(pool, dist, overwrite=False):
     # Make a cache directory to save the simulation output:
     cache_path = (pathlib.Path(__file__).parent / "../cache").resolve().absolute()
     cache_path = cache_path / "dist-{:.0f}kpc".format(dist)
-    cache_file = cache_path / "stream-sims.hdf5"
     plot_path = cache_path / "plots"
     plot_path.mkdir(exist_ok=True, parents=True)
     meta_path = cache_path / "stream-sims-metadata.fits"
-
-    # Ensure that cache file exists"
-    mode = "a" if not overwrite else "w"
-    with h5py.File(cache_file, mode=mode) as f:
-        pass
 
     # Default potential model:
     mw = gp.load(
@@ -230,14 +213,9 @@ def main(pool, dist, overwrite=False):
         seed=42,
     )
 
-    print(f"Loading cache file at {str(cache_file)}")
-    with h5py.File(cache_file, mode="r+") as f:
-        if "init" in f.keys() and overwrite:
-            del f["init"]
+    init_cache_file = cache_path / "stream-sim-init.hdf5"
 
-        run_init_sim = "init" not in f.keys()
-
-    if run_init_sim:
+    if not init_cache_file.exists():
         print("Setting up simulation instance...")
         sim = StreamSubhaloSimulation(t_post_impact=0 * u.Myr, **sim_kw)
 
@@ -246,12 +224,14 @@ def main(pool, dist, overwrite=False):
         print("Finding a good impact site...")
         impact_site = sim.get_impact_site(init_stream, init_prog)
 
-        # Save to cache file:
-        sim_callback(("init", cache_file, init_stream, impact_site, init_prog[0], {}))
+        with h5py.File(init_cache_file, mode="w") as f:
+            init_stream.to_hdf5(f.create_group("stream"))
+            init_prog.to_hdf5(f.create_group("prog"))
+            impact_site.to_hdf5(f.create_group("impact_site"))
 
     else:
-        with h5py.File(cache_file, mode="r") as f:
-            impact_site = gd.PhaseSpacePosition.from_hdf5(f["init/impact_site"])
+        with h5py.File(init_cache_file, mode="r") as f:
+            impact_site = gd.PhaseSpacePosition.from_hdf5(f["impact_site"])
 
     # Define the grid of subhalo/interaction parameters to run with
     Ms = [5e5, 1e6, 5e6, 1e7] * u.Msun
@@ -270,52 +250,52 @@ def main(pool, dist, overwrite=False):
     par_tasks = list(product(Ms, vs, b_facs, ts, rand_dxdvs))
 
     sim_tasks = [
-        (i, pars, sim_kw, impact_site, cache_file, overwrite)
+        (i, pars, sim_kw, impact_site, cache_path, overwrite)
         for i, pars in enumerate(par_tasks)
     ]
 
-    for _ in pool.map(sim_worker, sim_tasks, callback=sim_callback):
+    for _ in pool.map(sim_worker, sim_tasks):
         pass
 
     # Make a summary table with the simulation parameters:
     print("Making metadata table...")
 
+    allfilenames = []
     allpars = []
-    with h5py.File(cache_file, mode="r") as f:
-        for k in f.keys():
-            if k == "init":
-                continue
-            pars = at.QTable.read(f, path=f"{k}/parameters")
-            pars["id"] = int(k)
-            allpars.append(pars)
+    for filename in glob.glob(str(cache_path / "stream-sim-*.hdf5")):
+        filename = pathlib.Path(filename)
+        if "init" in filename.parts[-1]:
+            continue
+
+        pars = at.QTable.read(filename, path="/parameters")
+        allpars.append(pars)
+        allfilenames.append(filename)
 
     allpars = at.vstack(allpars)
     allpars.write(meta_path, overwrite=True)
 
     # ---------------------------------------------------------------------------------
     # Make plots:
-    with h5py.File(cache_file, mode="r") as f:
-        sim_keys = list(f.keys())
-        stream = gd.PhaseSpacePosition.from_hdf5(f["init/stream"])
-        prog = gd.PhaseSpacePosition.from_hdf5(f["init/prog"])
-        impact_site = gd.PhaseSpacePosition.from_hdf5(f["init/impact_site"])
+    with h5py.File(init_cache_file, mode="r") as f:
+        stream = gd.PhaseSpacePosition.from_hdf5(["stream"])
+        prog = gd.PhaseSpacePosition.from_hdf5(["prog"])
+        impact_site = gd.PhaseSpacePosition.from_hdf5(["impact_site"])
 
-    print(f"{len(sim_keys)} simulations to plot...")
+    print(f"{len(allfilenames)} simulations to plot...")
 
     stream_sfr = get_in_stream_frame(stream, impact=impact_site, prog=prog)
     tracks = get_stream_track(stream_sfr, lon_lim=(-45, 45))
 
     plot_tasks = [
         (
-            i,
+            pars["id"],
             cache_file,
-            sim_key,
             stream_sfr.replicate_without_data(),
             tracks,
             plot_path,
             overwrite,
         )
-        for i, sim_key in enumerate(sim_keys)
+        for pars, cache_file in zip(allpars, allfilenames)
     ]
 
     for _ in pool.map(plot_worker, plot_tasks):
