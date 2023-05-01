@@ -305,13 +305,13 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
     plot_tasks = [
         (
             pars["id"],
-            cache_file,
+            pars["filename"],
             stream_sfr.replicate_without_data(),
             tracks,
             plot_path,
             overwrite or overwrite_plots,
         )
-        for pars, cache_file in zip(allpars, allfilenames)
+        for pars in allpars
     ]
 
     for _ in pool.map(plot_worker, plot_tasks):
