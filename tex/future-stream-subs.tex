@@ -126,8 +126,8 @@ fully \nbody\ simulated streams in terms of the observed track of the stream in
 position--velocity space \citep[e.g.,][]{Kupper, Fardal, Gibbons}.
 However, while this approach does capture orbital dynamical effects that impact the
 density structure of streams (such as epicyclic over-densities; \citealt{Kupper}), it
-does not <nascently> capture more complex density variations induced by bursty
-disruption of the progenitor or the internal dynamics of the progenitor.
+does not by default capture more complex density variations induced by bursty disruption
+of the progenitor or the internal dynamics of the progenitor.
 We note that this method can be adapted to include the self-gravity of the progenitor,
 to evolve the disruption-time \df\ as the progenitor mass decreases, and to re-sample
 the mass-loss history given a more realistic treatment of the mass-loss rate, all of
@@ -136,9 +136,27 @@ globular cluster streams.
 For our purposes we do not do this as we are primarily interested in the observability
 of subhalo impacts on streams and not the details of the stream density structure.
 The fact that stream internal density structure will confound searches for subhalo
-impacts is an important caveat and topic that we discuss in \section~\ref{todo} below.
+impacts is an important caveat and topic that we discuss in \sectionname~\ref{todo}
+below.
 
-Gala simulation parameter choices. Potential model. Integrator. Time step. Number of particles.
+For all simulations, we adopt a smooth, four-component Galactic mass model that consists
+of a spherical Hernquist nucleus and bulge \citep{Hernquist:1992}, an approximation of
+an exponential disk in the radial direction and a $\textrm{sech}^2$ profile in the
+vertical direction \citep{Smith:2015}, and a spherical NFW halo \citep{Navarro:1996}.
+For the disk model, we adopt a radial scale length $h_R = 2.6~\kpc$ and scale height
+$h_z = 300~\pc$ \citep{Bland-Hawthorn:2016}. We fit for the masses and scale radii of
+the nucleus, bulge, and halo components using the same compilation of Milky Way enclosed
+mass measurements as used to define the \texttt{MilkyWayPotential} in \gala
+\citep{gala}, modified to include more recent measurements of the disk rotation curve
+\citep{Eilers:2019}.
+
+We compute orbits of the stream particles and perturbing subhalo using an adaptive 8th
+order Runge--Kutta integration scheme \citep{Hairer:1991}.
+To densely resolve the stellar distribution along each stream, TODO
+with a fixed time step of $0.25~\Myr$.
+
+
+Gala simulation parameter choices. Potential model. Integrator. Time step. Number of particles. How we stop stream generation and switch to Nbody orbit integration of the stream particles instead.
 
 \begin{figure*}[!th]
 \begin{center}
