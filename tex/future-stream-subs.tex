@@ -94,21 +94,51 @@ In this Article, we explore ...
 We study the observability of dark matter subhalo impacts in stellar streams by running
 dynamical simulations of stream--subhalo encounters using a standard ``mock stream''
 simulation method coupled with an \nbody\ perturber (the subhalo).
-We then simulate observations of stars in these streams by generating a stellar population for the stream with
-
-a and observational uncertainties.
-
-
-Summary of pipeline: run simulation, use IMF and isochrone to put stellar population on stream model, pick error model and "observe."
+We then simulate observations of stars in these streams by generating stellar
+populations for the streams and applying simple error models to the simulated
+observations to generate samples of stars with different faint limits and observational
+uncertainties.
+We describe each of these steps in more detail in the subsections that follow.
+% Summary of pipeline: run simulation, use IMF and isochrone to put stellar population on stream model, pick error model and "observe."
 
 \subsection{Stellar Stream + Subhalo Simulations} \label{sec:streams}
 
 We simulate the impact of dark matter subhalos on stellar streams using an approximate
 \nbody\ scheme that is implemented using the \gala\ Python package \citep{gala}.
+The streams are simulated using a ``mock stream'' (also known as ``particle spray'')
+approach that only simulates the evolution of stars once they have been stripped from a
+progenitor globular cluster (i.e. we do not simulate the internal dynamics or disruption
+process of the cluster).
+Our adopted stream simulation scheme most closely follows the method outlined in
+\citet{Fardal:2015}: Given the final phase-space position of a progenitor cluster, we
+integrate its orbit backwards in time to some initial time $t_0$.
+We then integrate the orbit of the progenitor forward in time from $t_0$ back to the
+final time at constant time intervals, but at each time step, we spawn $K_p$ massless
+star particles near the instantaneous Lagrange points of the progenitor system with
+small dispersions in position and velocity that scale with the adopted initial mass of
+the progenitor (i.e. the disruption-time distribution function \df\ depends on the
+orbital phase and progenitor mass).
+We use the parameter choices and progenitor mass scalings defined in \citet{Fardal:2015}
+to set the disruption-time \df.
 
-``mock stream'' simulations that approximate the tidal disruption process of a globular cluster
+The ``mock stream'' simulation method outlined above has been demonstrated to reproduce
+fully \nbody\ simulated streams in terms of the observed track of the stream in
+position--velocity space \citep[e.g.,][]{Kupper, Fardal, Gibbons}.
+However, while this approach does capture orbital dynamical effects that impact the
+density structure of streams (such as epicyclic over-densities; \citealt{Kupper}), it
+does not <nascently> capture more complex density variations induced by bursty
+disruption of the progenitor or the internal dynamics of the progenitor.
+We note that this method can be adapted to include the self-gravity of the progenitor,
+to evolve the disruption-time \df\ as the progenitor mass decreases, and to re-sample
+the mass-loss history given a more realistic treatment of the mass-loss rate, all of
+which can be used to make the simulated streams better match \nbody\ simulations of
+globular cluster streams.
+For our purposes we do not do this as we are primarily interested in the observability
+of subhalo impacts on streams and not the details of the stream density structure.
+The fact that stream internal density structure will confound searches for subhalo
+impacts is an important caveat and topic that we discuss in \section~\ref{todo} below.
 
-Gala simulations. Setup, etc.
+Gala simulation parameter choices. Potential model. Integrator. Time step. Number of particles.
 
 \begin{figure*}[!th]
 \begin{center}
