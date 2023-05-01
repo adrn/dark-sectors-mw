@@ -144,17 +144,39 @@ of a spherical Hernquist nucleus and bulge \citep{Hernquist:1992}, an approximat
 an exponential disk in the radial direction and a $\textrm{sech}^2$ profile in the
 vertical direction \citep{Smith:2015}, and a spherical NFW halo \citep{Navarro:1996}.
 For the disk model, we adopt a radial scale length $h_R = 2.6~\kpc$ and scale height
-$h_z = 300~\pc$ \citep{Bland-Hawthorn:2016}. We fit for the masses and scale radii of
-the nucleus, bulge, and halo components using the same compilation of Milky Way enclosed
-mass measurements as used to define the \texttt{MilkyWayPotential} in \gala
-\citep{gala}, modified to include more recent measurements of the disk rotation curve
-\citep{Eilers:2019}.
+$h_z = 300~\pc$ \citep{Bland-Hawthorn:2016}.
+We fit for all other parameters (component masses and scale radii) using the same
+compilation of Milky Way enclosed mass measurements as used to define the
+\texttt{MilkyWayPotential} in \gala \citep{gala}, modified to include more recent
+measurements of the disk rotation curve \citep{Eilers:2019}.
 
 We compute orbits of the stream particles and perturbing subhalo using an adaptive 8th
 order Runge--Kutta integration scheme \citep{Hairer:1991}.
-To densely resolve the stellar distribution along each stream, TODO
-with a fixed time step of $0.25~\Myr$.
+To densely resolve the particle distribution along each stream, we use a small time step
+of $\delta t = 0.25~\Myr$ to simulate the streams (since stream particles are spawned at
+each time step), and we release {\color{red} XX} particles sampled from the
+disruption-time \df\ at each time step.
 
+For a given choice of progenitor final conditions (i.e. a specification of the position
+and velocity of the progenitor at the final time step), we first run a simulation of an
+unperturbed stream to serve as a baseline model for comparison.
+Figure~\ref{fig:simgallery} (top left) shows an example of an unperturbed stream
+simulation, shown in a projection of sky coordinates ($\phi_1, \phi_2$) oriented with
+the stream track such that the stream appears approximately at latitude $\phi_2=0^\circ$
+relative to the ``sun'' (at $\bs{x} = (-8, 0, 0)~\kpc$ relative to the center of the
+mass model).
+We use the unperturbed stream simulation to pick a fiducial impact site for a subhalo
+encounter, which we then use when re-simulating the stream with a perturber included
+(specific experiments and subhalo parameter choices are described below in
+Section~{\color{red} TODO}).
+We define the impact site as the mean position and velocity of stars in an unperturbed
+stream model in a region of the stream that is sufficiently high density by the time
+the impact will occur and that is sufficiently far from the progenitor to be less
+affected by epicyclic density variations.
+
+Once an impact site is chosen, we simulate the impact of a subhalo on the stream by defining the orbit of the subhalo relative to the impact site using
+
+When simulating a perturbed stream, we define the orbit of the subhalo by specifying its
 
 Gala simulation parameter choices. Potential model. Integrator. Time step. Number of particles. How we stop stream generation and switch to Nbody orbit integration of the stream particles instead.
 
