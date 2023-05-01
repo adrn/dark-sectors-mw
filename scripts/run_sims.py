@@ -150,7 +150,7 @@ def plot_worker(task):
         fig, axes = plot_sky_projections(stream_sfr)
         ax = axes[-1]
         ax.text(
-            20,
+            -42,
             ax.get_ylim()[1] * 0.9,
             par_summary_text,
             ha="left",
@@ -168,17 +168,18 @@ def plot_worker(task):
 
         fig, axes = plot_sky_projections(stream_sfr, tracks=tracks)
         ax = axes[-1]
+
+        ylims = [(-2, 2), (-1.5, 1.5), (-0.25, 0.25), (-0.25, 0.25), (-12, 12)]
+        for ax, ylim in zip(axes, ylims):
+            ax.set_ylim(ylim)
+
         ax.text(
-            20,
+            -42,
             ax.get_ylim()[1] * 0.9,
             par_summary_text,
             ha="left",
             va="top",
         )
-
-        ylims = [(-2, 2), (-1.5, 1.5), (-0.25, 0.25), (-0.25, 0.25), (-12, 12)]
-        for ax, ylim in zip(axes, ylims):
-            ax.set_ylim(ylim)
 
         ax.set_xlabel("longitude [deg]")
         fig.suptitle("all simulated particles", fontsize=22)
