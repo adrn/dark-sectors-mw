@@ -23,7 +23,13 @@ def plot_sky_projections(
     _mask = (lon > xlim[0]) & (lon < xlim[1])
 
     if components is None:
-        components = ["phi2", "distance", "pm_phi1_cosphi2", "pm_phi2", "radial_velocity"]
+        components = [
+            "phi2",
+            "distance",
+            "pm_phi1_cosphi2",
+            "pm_phi2",
+            "radial_velocity",
+        ]
 
     # Make data either by getting component data, or computing relative to tracks:
     ys = {}

@@ -219,6 +219,45 @@ class StreamSubhaloSimulation:
         return stream_after_impact, unpert_stream_post, final_prog[0]
 
 
+def get_new_basis(impact_xyz, new_zhat_xyz):
+    """
+    Stream basis is defined so that z points along stream, x and y point orthogonal
+    """
+    new_zhat = new_zhat_xyz / np.linalg.norm(new_zhat_xyz)
+
+    tmp_yhat = impact_xyz / np.linalg.norm(impact_xyz)
+    new_yhat = tmp_yhat - (tmp_yhat @ new_zhat) * new_zhat
+    new_yhat = new_yhat / np.linalg.norm(new_yhat)
+
+    new_xhat = np.cross(new_yhat, new_zhat)
+    R = np.stack((new_xhat, new_yhat, new_zhat)).T
+    return R
+
+
+@u.quantity_input(b=u.kpc, phi=u.rad, vphi=u.km / u.s, vz=u.km / u.s)
+def get_subhalo_w0(impact_site, b, phi, vphi, vz):
+    """
+    Given an impact site and encounter parameters, return the subhalo phase-space
+    position at the time of impact.
+    """
+    R = get_new_basis(impact_site.xyz.value, impact_site.v_xyz.value)
+
+    # z is along stream
+    # x, y other coords
+    x = b * np.cos(phi)
+    y = b * np.sin(phi)
+    z = 0.0 * b.unit
+    xyz = np.stack((x, y, z))
+
+    vx = -vphi * np.sin(phi)
+    vy = vphi * np.cos(phi)
+    vxyz = np.stack((vx, vy, vz))
+
+    return gd.PhaseSpacePosition(
+        R @ xyz + impact_site.xyz, R @ vxyz + impact_site.v_xyz
+    )
+
+
 def get_in_stream_frame(stream, prog=None, impact=None, stream_frame=None):
     stream_galcen = coord.Galactocentric(stream.data)
     stream_icrs = stream_galcen.transform_to(coord.ICRS())
@@ -230,11 +269,7 @@ def get_in_stream_frame(stream, prog=None, impact=None, stream_frame=None):
         origin_pt = impact.to_coord_frame(coord.ICRS())
         other_pt = prog.to_coord_frame(coord.ICRS())
 
-        new_xhat = origin_pt.data.xyz / np.linalg.norm(origin_pt.data.xyz)
-        new_yhat = origin_pt.data.xyz - other_pt.data.xyz
-        new_yhat = new_yhat / np.linalg.norm(new_yhat)
-        new_zhat = np.cross(new_xhat, new_yhat)
-        R = np.stack((new_xhat, new_yhat, new_zhat)).T
+        R = get_new_basis(origin_pt.data.xyz, other_pt.data.xyz)
         stream_frame = gc.GreatCircleICRSFrame.from_R(R.T)
 
     stream_sfr = stream_icrs.transform_to(stream_frame)
