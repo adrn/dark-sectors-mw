@@ -21,73 +21,73 @@ from streamsubhalosim import (
 
 
 def sim_worker(task):
-    i, pars, sim_kw, impact_site, cache_path, overwrite = task
+    i, pars, sim_kw, impact_site, cache_path, overwrite, *plot_args = task
     M_subhalo, t_post_impact, impact_b_fac, phi, vphi, vz = pars
 
     cache_file = cache_path / f"stream-sim-{i:04d}.hdf5"
 
-    if cache_file.exists() and not overwrite:
-        return None
+    if not cache_file.exists() or overwrite:
+        # HACK: factor of 2.0 = denser than CDM!
+        c_subhalo = 1.005 * u.kpc * (M_subhalo / (1e8 * u.Msun)) ** 0.5 / 2.0
+        subhalo_potential = gp.HernquistPotential(
+            m=M_subhalo, c=c_subhalo, units=galactic
+        )
 
-    # HACK: factor of 2.0 = denser than CDM!
-    c_subhalo = 1.005 * u.kpc * (M_subhalo / (1e8 * u.Msun)) ** 0.5 / 2.0
-    subhalo_potential = gp.HernquistPotential(m=M_subhalo, c=c_subhalo, units=galactic)
+        impact_b = impact_b_fac * c_subhalo
 
-    impact_b = impact_b_fac * c_subhalo
+        subhalo_w0 = get_subhalo_w0(impact_site, b=impact_b, phi=phi, vphi=vphi, vz=vz)
 
-    subhalo_w0 = get_subhalo_w0(impact_site, b=impact_b, phi=phi, vphi=vphi, vz=vz)
+        # Compute "buffer" time duration and timestep
+        # Buffer time is 32 times the crossing time:
+        BUFFER_N = 32
+        subhalo_dv = np.linalg.norm(subhalo_w0.v_xyz - impact_site.v_xyz)
+        subhalo_dx = np.max(u.Quantity([impact_b, c_subhalo]))
+        t_buffer_impact = np.round(
+            (BUFFER_N * subhalo_dx / subhalo_dv).to(u.Myr), decimals=0
+        )
+        impact_dt = np.round((t_buffer_impact / 256).to(u.Myr), decimals=1)
 
-    # Compute "buffer" time duration and timestep
-    # Buffer time is 32 times the crossing time:
-    BUFFER_N = 32
-    subhalo_dv = np.linalg.norm(subhalo_w0.v_xyz - impact_site.v_xyz)
-    subhalo_dx = np.max(u.Quantity([impact_b, c_subhalo]))
-    t_buffer_impact = np.round(
-        (BUFFER_N * subhalo_dx / subhalo_dv).to(u.Myr), decimals=0
-    )
-    impact_dt = np.round((t_buffer_impact / 256).to(u.Myr), decimals=1)
+        sim = StreamSubhaloSimulation(t_post_impact=t_post_impact, **sim_kw)
 
-    sim = StreamSubhaloSimulation(t_post_impact=t_post_impact, **sim_kw)
+        print(f"[{i}]: starting simulation...")
+        time0 = time.time()
+        stream, _, final_prog, final_t = sim.run_perturbed_stream(
+            subhalo_w0, subhalo_potential, t_buffer_impact, impact_dt
+        )
 
-    print(f"[{i}]: starting simulation...")
-    time0 = time.time()
-    stream, _, final_prog, final_t = sim.run_perturbed_stream(
-        subhalo_w0, subhalo_potential, t_buffer_impact, impact_dt
-    )
+        print(
+            f"[{i}]: Simulation done after {time.time() - time0:.1f} seconds - "
+            "writing to disk..."
+        )
 
-    print(
-        f"[{i}]: Simulation done after {time.time() - time0:.1f} seconds - "
-        "writing to disk..."
-    )
+        pars = {
+            "id": i,
+            "M_subhalo": M_subhalo,
+            "c_subhalo": c_subhalo,
+            "impact_b_fac": impact_b_fac,
+            "impact_b": impact_b,
+            "phi": phi,
+            "vphi": vphi,
+            "vz": vz,
+            "t_post_impact": t_post_impact,
+            "filename": str(cache_file),
+        }
 
-    pars = {
-        "id": i,
-        "M_subhalo": M_subhalo,
-        "c_subhalo": c_subhalo,
-        "impact_b_fac": impact_b_fac,
-        "impact_b": impact_b,
-        "phi": phi,
-        "vphi": vphi,
-        "vz": vz,
-        "t_post_impact": t_post_impact,
-        "filename": str(cache_file),
-    }
+        with h5py.File(cache_file, mode="w") as f:
+            if len(pars.keys()) > 0:
+                t = at.QTable()
+                for k, v in pars.items():
+                    t[k] = [v]
+                t.write(f, serialize_meta=True, path="/parameters")
 
-    with h5py.File(cache_file, mode="w") as f:
-        if len(pars.keys()) > 0:
-            t = at.QTable()
-            for k, v in pars.items():
-                t[k] = [v]
-            t.write(f, serialize_meta=True, path="/parameters")
+            stream.to_hdf5(f.create_group("stream"))
+            final_prog.to_hdf5(f.create_group("prog"))
+            impact_site.to_hdf5(f.create_group("impact_site"))
 
-        stream.to_hdf5(f.create_group("stream"))
-        final_prog.to_hdf5(f.create_group("prog"))
-        impact_site.to_hdf5(f.create_group("impact_site"))
+    plot_worker(i, str(cache_file), *plot_args)
 
 
-def plot_worker(task):
-    id_, cache_file, stream_frame, tracks, plot_path, overwrite = task
-
+def plot_worker(id_, cache_file, stream_frame, tracks, plot_path, overwrite):
     plot_filename_base = plot_path / f"stream-{id_:04d}"
     filenames = {
         "xy": pathlib.Path(f"{str(plot_filename_base)}-xy.png"),
@@ -229,12 +229,17 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
 
         with h5py.File(init_cache_file, mode="w") as f:
             init_stream.to_hdf5(f.create_group("stream"))
-            init_prog.to_hdf5(f.create_group("prog"))
+            init_prog[0].to_hdf5(f.create_group("prog"))
             impact_site.to_hdf5(f.create_group("impact_site"))
 
-    else:
-        with h5py.File(init_cache_file, mode="r") as f:
-            impact_site = gd.PhaseSpacePosition.from_hdf5(f["impact_site"])
+    with h5py.File(init_cache_file, mode="r") as f:
+        init_stream = gd.PhaseSpacePosition.from_hdf5(f["stream"])
+        init_prog = gd.PhaseSpacePosition.from_hdf5(f["prog"])
+        impact_site = gd.PhaseSpacePosition.from_hdf5(f["impact_site"])
+
+    stream_sfr = get_in_stream_frame(init_stream, impact=impact_site, prog=init_prog)
+    tracks = get_stream_track(stream_sfr, lon_lim=(-45, 45))
+    stream_frame = stream_sfr.replicate_without_data()
 
     # Define the grid of subhalo/interaction parameters to run with
     # ts = [50, 100, 200, 400, 800] * u.Myr
@@ -256,7 +261,18 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
 
     print(f"Running {len(par_tasks)} simulations...")
     sim_tasks = [
-        (i, pars, sim_kw, impact_site, cache_path, overwrite)
+        (
+            i,
+            pars,
+            sim_kw,
+            impact_site,
+            cache_path,
+            overwrite,
+            stream_frame,
+            tracks,
+            plot_path,
+            overwrite_plots,
+        )
         for i, pars in enumerate(par_tasks)
     ]
 
@@ -287,33 +303,6 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
 
         allpars = at.vstack(allpars)
         allpars.write(meta_path, overwrite=True)
-
-    # ---------------------------------------------------------------------------------
-    # Make plots:
-    with h5py.File(init_cache_file, mode="r") as f:
-        stream = gd.PhaseSpacePosition.from_hdf5(f["stream"])
-        prog = gd.PhaseSpacePosition.from_hdf5(f["prog"])
-        impact_site = gd.PhaseSpacePosition.from_hdf5(f["impact_site"])
-
-    print(f"{len(allfilenames)} simulations to plot...")
-
-    stream_sfr = get_in_stream_frame(stream, impact=impact_site, prog=prog[0])
-    tracks = get_stream_track(stream_sfr, lon_lim=(-45, 45))
-
-    plot_tasks = [
-        (
-            pars["id"],
-            pars["filename"],
-            stream_sfr.replicate_without_data(),
-            tracks,
-            plot_path,
-            overwrite or overwrite_plots,
-        )
-        for pars in allpars
-    ]
-
-    for _ in pool.map(plot_worker, plot_tasks):
-        pass
 
 
 if __name__ == "__main__":
