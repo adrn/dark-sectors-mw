@@ -55,10 +55,16 @@ def sim_worker(task):
         BUFFER_N = 32
         subhalo_dv = np.linalg.norm(subhalo_w0.v_xyz - impact_site.v_xyz)
         subhalo_dx = np.max(u.Quantity([impact_b, c_subhalo]))
+
+        # Minimum buffer time = 20 Myr
         t_buffer_impact = np.round(
             (BUFFER_N * subhalo_dx / subhalo_dv).to(u.Myr), decimals=0
         )
+        t_buffer_impact = np.max(u.Quantity([t_buffer_impact, 20 * u.Myr]))
+
+        # Minimum buffer time step = 0.05 Myr
         impact_dt = np.round((t_buffer_impact / 256).to(u.Myr), decimals=1)
+        impact_dt = np.max(u.Quantity([impact_dt, 0.05 * u.Myr]))
 
         print(
             f"[{i}]: starting simulation: "
