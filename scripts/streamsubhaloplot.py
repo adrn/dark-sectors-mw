@@ -8,6 +8,7 @@ def plot_sky_projections(
     stream_sfr,
     components=None,
     tracks=None,
+    annotate_impact=True,
     xlim=(-45, 45),
     ylims=None,
     hist2d=True,
@@ -84,6 +85,28 @@ def plot_sky_projections(
 
         ax.set_ylim(ylim)
         ax.set_ylabel(comp)
+
+        if annotate_impact:
+            yloc = ylim[0] + 0.3 * (ylim[1] - ylim[0])
+            yloctext = ylim[0] + 0.1 * (ylim[1] - ylim[0])
+            ann_style = dict(
+                ha="center",
+                va="center",
+                arrowprops=dict(
+                    arrowstyle="->",
+                    lw=1.5,
+                    color="tab:red",
+                    shrinkA=0,
+                    shrinkB=0,
+                    alpha=0.5,
+                ),
+                fontsize=14,
+                zorder=100,
+                color="tab:red",
+                alpha=0.9,
+            )
+            ax.annotate("impact", xy=(0, yloc), xytext=(0, yloctext), **ann_style)
+            annotate_impact = False
 
     if xlabel:
         axes[-1].set(xlim=xlim, xlabel=r"stream longitude $\phi_1$ [deg]")
