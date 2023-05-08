@@ -262,21 +262,12 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
     stream_frame = stream_sfr.replicate_without_data()
 
     # Define the grid of subhalo/interaction parameters to run with
-    # ts = [50, 100, 200, 400, 800] * u.Myr
-    # Ms = [5e5, 1e6, 5e6, 1e7] * u.Msun
-    # b_facs = [0, 0.5, 1.0, 2.0, 5]
-    # phis = np.arange(0, 180 + 1, 45) * u.deg
-    # vphis = [25, 50, 100, 200] * u.pc / u.Myr
-    # vzs = [-50, 0, 50] * u.pc / u.Myr
-    # par_tasks = list(product(Ms, ts, b_facs, phis, vphis, vzs))
-
-    # HACK FOR TESTING:
-    ts = [50] * u.Myr
-    Ms = [5e5, 1e7] * u.Msun
-    b_facs = [0.5]
-    phis = [0] * u.deg
-    vphis = [50] * u.pc / u.Myr
-    vzs = [0] * u.pc / u.Myr
+    ts = [50, 100, 200, 400, 800] * u.Myr
+    Ms = [5e5, 1e6, 5e6, 1e7] * u.Msun
+    b_facs = [0, 1.0, 2.0, 4.0]
+    phis = np.arange(0, 180 + 1, 45) * u.deg
+    vphis = [25, 50, 100, 200] * u.pc / u.Myr
+    vzs = [-50, 0, 50] * u.pc / u.Myr
     par_tasks = list(product(Ms, ts, b_facs, phis, vphis, vzs))
 
     print(f"Running {len(par_tasks)} simulations...")
