@@ -229,7 +229,7 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
 
     init_cache_file = cache_path / "stream-sim-init.hdf5"
 
-    if not init_cache_file.exists():
+    if not init_cache_file.exists() or overwrite:
         print("Setting up simulation instance...")
         sim = StreamSubhaloSimulation(t_post_impact=0 * u.Myr, **sim_kw)
 
