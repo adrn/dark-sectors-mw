@@ -106,6 +106,7 @@ def plot_sky_projections(
                 alpha=0.9,
             )
             ax.annotate("impact", xy=(0, yloc), xytext=(0, yloctext), **ann_style)
+            ax.axvline(0, color="tab:red", lw=1.0, ls="--", alpha=0.5, zorder=-10)
             annotate_impact = False
 
     if xlabel:
