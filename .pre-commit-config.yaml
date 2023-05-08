@@ -1,0 +1,42 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-added-large-files
+        # Prevent giant files from being committed.
+      - id: check-ast
+        # Simply check whether files parse as valid python.
+      - id: check-case-conflict
+        # Check for files with names that would conflict on a case-insensitive
+        # filesystem like MacOS HFS+ or Windows FAT.
+      - id: check-merge-conflict
+        # Check for files that contain merge conflict strings.
+      - id: end-of-file-fixer
+        # Makes sure files end in a newline and only a newline.
+        exclude: ".*(plots.*|data.*|tex.*)$"
+      - id: trailing-whitespace
+        # Trims trailing whitespace.
+        exclude: ".*(plots.*|data.*|tex.*)$"
+
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.3.1
+    hooks:
+      - id: pyupgrade
+        args: ["--py39-plus"]
+        exclude: ".*(tex.*)$"
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.11.5
+    hooks:
+      - id: isort
+        name: isort (python)
+
+  - repo: https://github.com/psf/black
+    rev: 22.12.0
+    hooks:
+      - id: black
+
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.6.1
+    hooks:
+      - id: nbstripout
