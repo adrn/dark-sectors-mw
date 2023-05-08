@@ -16,12 +16,13 @@ from streamsubhalosim import (
     StreamSubhaloSimulation,
     get_in_stream_frame,
     get_stream_track,
+    get_subhalo_w0,
 )
 
 
 def sim_worker(task):
     i, pars, sim_kw, impact_site, cache_path, overwrite = task
-    M_subhalo, impact_v, impact_b_fac, t_post_impact, dxdv = pars
+    M_subhalo, t_post_impact, impact_b_fac, phi, vphi, vz = pars
 
     cache_file = cache_path / f"stream-sim-{i:04d}.hdf5"
 
@@ -31,17 +32,7 @@ def sim_worker(task):
     c_subhalo = 1.005 * u.kpc * (M_subhalo / (1e8 * u.Msun)) ** 0.5 / 2.0  # MAGIC
     impact_b = impact_b_fac * c_subhalo
 
-    # Rotation matrix to impact site coordinates:
-    xhat = impact_site.xyz / np.linalg.norm(impact_site.xyz)
-    yhat = impact_site.v_xyz / np.linalg.norm(impact_site.v_xyz)
-    xhat = xhat - xhat.dot(yhat) * yhat
-    zhat = np.cross(xhat, yhat)
-    R = np.stack((xhat, yhat, zhat)).T
-
-    dxhat = dxdv[0] / np.linalg.norm(dxdv[0])
-    dx = R @ (dxhat * impact_b)
-    dvhat = dxdv[1] / np.linalg.norm(dxdv[1])
-    dv = R @ (dvhat * impact_v)
+    subhalo_w0 = get_subhalo_w0(impact_site, b=impact_b, phi=phi, vphi=vphi, vz=vz)
 
     sim = StreamSubhaloSimulation(t_post_impact=t_post_impact, **sim_kw)
 
@@ -51,7 +42,7 @@ def sim_worker(task):
     time0 = time.time()
     stream, _, final_prog = sim.run_perturbed_stream(
         impact_site_w=impact_site,
-        subhalo_impact_dw=gd.PhaseSpacePosition(dx, dv),
+        subhalo_w=subhalo_w0,
         subhalo_potential=gp.HernquistPotential(
             m=M_subhalo, c=c_subhalo, units=galactic
         ),
@@ -189,11 +180,10 @@ def plot_worker(task):
 
 def main(pool, dist, overwrite=False, overwrite_plots=False):
     print(f"Setting up job with n={pool.size} processes...")
-    rng = np.random.default_rng(123)
 
     # Make a cache directory to save the simulation output:
     root_cache_path = (pathlib.Path(__file__).parent / "../cache").resolve().absolute()
-    root_cache_path = root_cache_path / "dist-{:.0f}kpc".format(dist)
+    root_cache_path = root_cache_path / f"dist-{dist:.0f}kpc"
     plot_path = root_cache_path / "plots"
     plot_path.mkdir(exist_ok=True, parents=True)
     cache_path = root_cache_path / "sims"
@@ -215,10 +205,10 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
     sim_kw = dict(
         mw_potential=mw,
         final_prog_w=wf,
-        M_stream=8e4 * u.Msun,
+        M_stream=5e4 * u.Msun,
         t_pre_impact=5 * u.Gyr,
         dt=0.25 * u.Myr,
-        n_particles=6,
+        n_particles=5,
         seed=42,
     )
 
@@ -243,20 +233,14 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
             impact_site = gd.PhaseSpacePosition.from_hdf5(f["impact_site"])
 
     # Define the grid of subhalo/interaction parameters to run with
+    ts = [50, 200, 400, 800] * u.Myr
     Ms = [5e5, 1e6, 5e6, 1e7] * u.Msun
-    vs = [25, 50, 100, 200] * u.pc / u.Myr
     b_facs = [0, 0.5, 1.0, 2.0, 5]
-    ts = [100, 200, 400, 800] * u.Myr
+    phis = np.arange(0, 180 + 1, 45) * u.deg
+    vphis = [25, 50, 100, 200] * u.pc / u.Myr
+    vzs = [-50, 0, 50] * u.pc / u.Myr
 
-    # Some custom geometries for the subhalo at interaction, in a coordinate space
-    # defined by dv of the impact site
-    rand_dxdvs = [
-        ([1.0, 0, 0], [0, 0, 1.0]),
-        ([0, 0, 1.0], [1.0, 0, 0]),
-        (rng.uniform(size=3), rng.uniform(size=3)),
-        (rng.uniform(size=3), rng.uniform(size=3)),
-    ]
-    par_tasks = list(product(Ms, vs, b_facs, ts, rand_dxdvs))
+    par_tasks = list(product(Ms, ts, b_facs, phis, vphis, vzs))
 
     sim_tasks = [
         (i, pars, sim_kw, impact_site, cache_path, overwrite)

@@ -117,39 +117,38 @@ class StreamSubhaloSimulation:
     def run_perturbed_stream(
         self,
         impact_site_w,
-        subhalo_impact_dw,
+        subhalo_impact_w,
         subhalo_potential,
         t_buffer_impact=None,
         impact_dt=None,
     ):
-        subhalo_v = np.linalg.norm(subhalo_impact_dw.v_xyz)
-        if t_buffer_impact is None:
-            t_buffer_impact = np.round((1 * u.kpc / subhalo_v).to(u.Myr), decimals=1)
-        if impact_dt is None:
-            impact_dt = (1.0 * u.pc / subhalo_v).to(u.Myr)
+        """
+        TODO: decide at what time the input w's should be at. Both at impact?
+        """
 
         final_time = self.t_pre_impact + self.t_post_impact
 
         # Backwards-integrate the impact site location from the end of the simulation
         # to the time of impact
         impact_site_at_impact = self.H.integrate_orbit(
-            impact_site_w,
+            impact_site_final_w,
             dt=-self.dt / 10.0,
             t1=final_time,
             t2=self.t_pre_impact,
             Integrator=gi.Ruth4Integrator,
         )[-1]
 
-        # At the time of impact, define the subhalo relative phase-space coordinates,
-        # using parameters relative to the impact site
-        w_subhalo_impact = gd.PhaseSpacePosition(
-            impact_site_at_impact.xyz + subhalo_impact_dw.xyz,
-            impact_site_at_impact.v_xyz + subhalo_impact_dw.v_xyz,
+        subhalo_dv = np.linalg.norm(
+            subhalo_impact_w.v_xyz - impact_site_at_impact.v_xyz
         )
+        if t_buffer_impact is None:
+            t_buffer_impact = np.round((1 * u.kpc / subhalo_dv).to(u.Myr), decimals=1)
+        if impact_dt is None:
+            impact_dt = (1.0 * u.pc / subhalo_dv).to(u.Myr)
 
         # Integrate the subhalo orbit from time of impact back to the buffer time
         w_subhalo_buffer = self.H.integrate_orbit(
-            w_subhalo_impact,
+            subhalo_impact_w,
             dt=-self.dt / 10,
             t1=self.t_pre_impact,
             t2=self.t_pre_impact - t_buffer_impact,
