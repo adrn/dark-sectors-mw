@@ -60,7 +60,10 @@ def sim_worker(task):
         )
         impact_dt = np.round((t_buffer_impact / 256).to(u.Myr), decimals=1)
 
-        print(f"[{i}]: starting simulation...")
+        print(
+            f"[{i}]: starting simulation: "
+            + f"{subhalo_w0}, {t_buffer_impact=:.3f}, {impact_dt=:.3f}"
+        )
         time0 = time.time()
         stream, _, final_prog, final_t = sim.run_perturbed_stream(
             subhalo_w0, subhalo_potential, t_buffer_impact, impact_dt
