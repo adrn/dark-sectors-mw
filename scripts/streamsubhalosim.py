@@ -46,13 +46,12 @@ class StreamSubhaloSimulation:
         self.t_post_impact = t_post_impact
         self.dt = dt
         self._mockstream_kw = dict(release_every=release_every, n_particles=n_particles)
-        self.rng = np.random.default_rng(seed=seed)
 
         self.H = gp.Hamiltonian(mw_potential)
-        self._df = ms.FardalStreamDF(random_state=self.rng)
-        self._mockstream_gen = ms.MockStreamGenerator(
-            df=self._df, hamiltonian=self.H, progenitor_potential=progenitor_potential
-        )
+
+        self._seed = seed
+        self._prog_pot = progenitor_potential
+
         self._prog_w0 = self.H.integrate_orbit(
             self.final_prog_w,
             dt=-dt,
@@ -62,12 +61,31 @@ class StreamSubhaloSimulation:
             store_all=False,
         )[0]
 
+    def _make_ms_gen(self):
+        rng = np.random.default_rng(seed=self._seed)
+        _df = ms.FardalStreamDF(random_state=rng)
+        return ms.MockStreamGenerator(
+            df=_df, hamiltonian=self.H, progenitor_potential=self._prog_pot
+        )
+
     def run_init_stream(self):
         """
         Generate the initial, unperturbed stream model. This is used to pick a random
         star particle to then define the impact site of the perturber.
         """
-        return self._mockstream_gen.run(
+        mockstream_gen = self._make_ms_gen()
+        at_impact = mockstream_gen.run(
+            self._prog_w0,
+            self.M_stream,
+            dt=self.dt,
+            t1=0,
+            t2=self.t_pre_impact,
+            **self._mockstream_kw,
+        )
+
+        # reset seed in DF
+        mockstream_gen = self._make_ms_gen()
+        final = mockstream_gen.run(
             self._prog_w0,
             self.M_stream,
             dt=self.dt,
@@ -75,6 +93,7 @@ class StreamSubhaloSimulation:
             t2=self.t_pre_impact + self.t_post_impact,
             **self._mockstream_kw,
         )
+        return at_impact, final
 
     def get_impact_site(
         self, init_stream, init_prog, prog_dist=8 * u.kpc, leading=True
@@ -116,48 +135,32 @@ class StreamSubhaloSimulation:
     @u.quantity_input(t_buffer_impact=u.Myr, impact_dt=u.Myr)
     def run_perturbed_stream(
         self,
-        impact_site_w,
-        subhalo_impact_w,
+        subhalo_at_impact,
         subhalo_potential,
         t_buffer_impact=None,
         impact_dt=None,
     ):
-        """
-        TODO: decide at what time the input w's should be at. Both at impact?
-        """
-
         final_time = self.t_pre_impact + self.t_post_impact
 
-        # Backwards-integrate the impact site location from the end of the simulation
-        # to the time of impact
-        impact_site_at_impact = self.H.integrate_orbit(
-            impact_site_final_w,
-            dt=-self.dt / 10.0,
-            t1=final_time,
-            t2=self.t_pre_impact,
-            Integrator=gi.Ruth4Integrator,
-        )[-1]
-
-        subhalo_dv = np.linalg.norm(
-            subhalo_impact_w.v_xyz - impact_site_at_impact.v_xyz
-        )
+        subhalo_v = np.linalg.norm(subhalo_at_impact.v_xyz)
         if t_buffer_impact is None:
-            t_buffer_impact = np.round((1 * u.kpc / subhalo_dv).to(u.Myr), decimals=1)
+            t_buffer_impact = np.round((1 * u.kpc / subhalo_v).to(u.Myr), decimals=1)
         if impact_dt is None:
-            impact_dt = (1.0 * u.pc / subhalo_dv).to(u.Myr)
+            impact_dt = (1.0 * u.pc / subhalo_v).to(u.Myr)
 
         # Integrate the subhalo orbit from time of impact back to the buffer time
-        w_subhalo_buffer = self.H.integrate_orbit(
-            subhalo_impact_w,
+        subhalo_buffer = self.H.integrate_orbit(
+            subhalo_at_impact,
             dt=-self.dt / 10,
             t1=self.t_pre_impact,
             t2=self.t_pre_impact - t_buffer_impact,
-            Integrator=gi.Ruth4Integrator,
+            Integrator=gi.DOPRI853Integrator,
             store_all=False,
         )[0]
 
         # Generate the mock stream up to the buffer time relative to the impact
-        stream_buffer_pre, prog_w_buffer_pre = self._mockstream_gen.run(
+        mockstream_gen = self._make_ms_gen()
+        stream_buffer_pre, prog_w_buffer_pre = mockstream_gen.run(
             self._prog_w0,
             self.M_stream,
             dt=self.dt,
@@ -171,7 +174,7 @@ class StreamSubhaloSimulation:
         tmp = gd.PhaseSpacePosition(
             stream_buffer_pre.pos, stream_buffer_pre.vel, frame=stream_buffer_pre.frame
         )
-        nbody_w0 = gd.combine((w_subhalo_buffer, tmp))
+        nbody_w0 = gd.combine((subhalo_buffer, tmp))
 
         null_potential = gp.NullPotential(units=galactic)
         nbody = gd.DirectNBody(
@@ -206,16 +209,16 @@ class StreamSubhaloSimulation:
         else:
             stream_after_impact = stream_impact
 
-        unpert_stream_post, final_prog = self._mockstream_gen.run(
+        unpert_stream_post, final_prog = mockstream_gen.run(
             prog_w_buffer_pre[0],
             self.M_stream,
             dt=self.dt,
             t1=self.t_pre_impact - t_buffer_impact,
-            t2=self.t_pre_impact + self.t_post_impact,
+            t2=final_time,
             **self._mockstream_kw,
         )
 
-        return stream_after_impact, unpert_stream_post, final_prog[0]
+        return stream_after_impact, unpert_stream_post, final_prog[0], final_time
 
 
 def get_new_basis(impact_xyz, new_zhat_xyz):
@@ -265,11 +268,14 @@ def get_in_stream_frame(stream, prog=None, impact=None, stream_frame=None):
         if impact is None or prog is None:
             raise ValueError("Must provide impact and prog to get stream frame")
 
-        origin_pt = impact.to_coord_frame(coord.ICRS())
-        other_pt = prog.to_coord_frame(coord.ICRS())
+        impact_icrs = impact.to_coord_frame(coord.ICRS())
+        other_icrs = prog.to_coord_frame(coord.ICRS())
 
-        R = get_new_basis(origin_pt.data.xyz, other_pt.data.xyz)
-        stream_frame = gc.GreatCircleICRSFrame.from_R(R.T)
+        stream_frame = gc.GreatCircleICRSFrame.from_xyz(
+            xnew=impact_icrs.data.without_differentials(),
+            ynew=impact_icrs.data.without_differentials()
+            - other_icrs.data.without_differentials(),
+        )
 
     stream_sfr = stream_icrs.transform_to(stream_frame)
     return stream_sfr

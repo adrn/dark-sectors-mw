@@ -29,25 +29,30 @@ def sim_worker(task):
     if cache_file.exists() and not overwrite:
         return None
 
-    c_subhalo = 1.005 * u.kpc * (M_subhalo / (1e8 * u.Msun)) ** 0.5 / 2.0  # MAGIC
+    # HACK: factor of 2.0 = denser than CDM!
+    c_subhalo = 1.005 * u.kpc * (M_subhalo / (1e8 * u.Msun)) ** 0.5 / 2.0
+    subhalo_potential = gp.HernquistPotential(m=M_subhalo, c=c_subhalo, units=galactic)
+
     impact_b = impact_b_fac * c_subhalo
 
     subhalo_w0 = get_subhalo_w0(impact_site, b=impact_b, phi=phi, vphi=vphi, vz=vz)
 
+    # Compute "buffer" time duration and timestep
+    # Buffer time is 32 times the crossing time:
+    BUFFER_N = 32
+    subhalo_dv = np.linalg.norm(subhalo_w0.v_xyz - impact_site.v_xyz)
+    subhalo_dx = np.max(u.Quantity([impact_b, c_subhalo]))
+    t_buffer_impact = np.round(
+        (BUFFER_N * subhalo_dx / subhalo_dv).to(u.Myr), decimals=0
+    )
+    impact_dt = np.round((t_buffer_impact / 256).to(u.Myr), decimals=1)
+
     sim = StreamSubhaloSimulation(t_post_impact=t_post_impact, **sim_kw)
 
-    # Buffer time is 32 times the crossing time:
-    MAGIC = 32
     print(f"[{i}]: starting simulation...")
     time0 = time.time()
-    stream, _, final_prog = sim.run_perturbed_stream(
-        impact_site_w=impact_site,
-        subhalo_w=subhalo_w0,
-        subhalo_potential=gp.HernquistPotential(
-            m=M_subhalo, c=c_subhalo, units=galactic
-        ),
-        t_buffer_impact=np.round((MAGIC * c_subhalo / impact_v).to(u.Myr)),
-        impact_dt=np.round((c_subhalo / impact_v / MAGIC).to(u.Myr), decimals=2),
+    stream, _, final_prog, final_t = sim.run_perturbed_stream(
+        subhalo_w0, subhalo_potential, t_buffer_impact, impact_dt
     )
 
     print(
@@ -59,14 +64,12 @@ def sim_worker(task):
         "id": i,
         "M_subhalo": M_subhalo,
         "c_subhalo": c_subhalo,
-        "impact_v": impact_v,
         "impact_b_fac": impact_b_fac,
         "impact_b": impact_b,
+        "phi": phi,
+        "vphi": vphi,
+        "vz": vz,
         "t_post_impact": t_post_impact,
-        "dx": dx,
-        "dv": dv,
-        "dx_hat": dxhat,
-        "dv_hat": dvhat,
         "filename": str(cache_file),
     }
 
@@ -219,9 +222,9 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
         sim = StreamSubhaloSimulation(t_post_impact=0 * u.Myr, **sim_kw)
 
         print("Running initial stream simulation...")
-        init_stream, init_prog = sim.run_init_stream()
+        (init_stream, init_prog), _ = sim.run_init_stream()
         print("Finding a good impact site...")
-        impact_site = sim.get_impact_site(init_stream, init_prog)
+        impact_site = sim.get_impact_site(init_stream, init_prog, prog_dist=10 * u.kpc)
 
         with h5py.File(init_cache_file, mode="w") as f:
             init_stream.to_hdf5(f.create_group("stream"))
