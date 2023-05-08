@@ -115,14 +115,14 @@ def plot_worker(task):
 
     par_summary_text = (
         f"$M_s = ${pars['M_subhalo'].value:.1e} {pars['M_subhalo'].unit:latex_inline}\n"
-        + f"$b = ${pars['impact_b'].to_value(u.pc):.1f} {u.pc:latex_inline}\n"
+        + f"$b = {pars['impact_b'].to_value(u.pc):.1f}$ {u.pc:latex_inline}\n"
         + r"$\phi = "
-        + f"${pars['phi'].to_value(u.deg):.1f} deg\n"
+        + f"{pars['phi'].to_value(u.deg):.1f}$ deg\n"
         + r"$v_{\phi} = "
-        + f"${pars['vphi'].value:.1f} {pars['vphi'].unit:latex_inline}\n"
+        + f"{pars['vphi'].value:.1f}$ {pars['vphi'].unit:latex_inline}\n"
         + r"$v_{z} = "
-        + f"${pars['vz'].value:.1f} {pars['vz'].unit:latex_inline}\n"
-        + f"$∆t = ${pars['t_post_impact'].to_value(u.Myr):.0f} {u.Myr:latex_inline}\n"
+        + f"{pars['vz'].value:.1f}$ {pars['vz'].unit:latex_inline}\n"
+        + f"$∆t = {pars['t_post_impact'].to_value(u.Myr):.0f}$ {u.Myr:latex_inline}\n"
     )
 
     if not filenames["xy"].exists() or overwrite:
@@ -164,7 +164,7 @@ def plot_worker(task):
         fig, axes = plot_sky_projections(stream_sfr, tracks=tracks)
         ax = axes[-1]
 
-        ylims = [(-2, 2), (-1.5, 1.5), (-0.25, 0.25), (-0.25, 0.25), (-12, 12)]
+        ylims = [(-2, 2), (-1.5, 1.5), (-0.15, 0.15), (-0.15, 0.15), (-12, 12)]
         for ax, ylim in zip(axes, ylims):
             ax.set_ylim(ylim)
 
@@ -237,15 +237,24 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
             impact_site = gd.PhaseSpacePosition.from_hdf5(f["impact_site"])
 
     # Define the grid of subhalo/interaction parameters to run with
-    ts = [50, 200, 400, 800] * u.Myr
-    Ms = [5e5, 1e6, 5e6, 1e7] * u.Msun
-    b_facs = [0, 0.5, 1.0, 2.0, 5]
-    phis = np.arange(0, 180 + 1, 45) * u.deg
-    vphis = [25, 50, 100, 200] * u.pc / u.Myr
-    vzs = [-50, 0, 50] * u.pc / u.Myr
+    # ts = [50, 100, 200, 400, 800] * u.Myr
+    # Ms = [5e5, 1e6, 5e6, 1e7] * u.Msun
+    # b_facs = [0, 0.5, 1.0, 2.0, 5]
+    # phis = np.arange(0, 180 + 1, 45) * u.deg
+    # vphis = [25, 50, 100, 200] * u.pc / u.Myr
+    # vzs = [-50, 0, 50] * u.pc / u.Myr
+    # par_tasks = list(product(Ms, ts, b_facs, phis, vphis, vzs))
 
+    # HACK FOR TESTING:
+    ts = [50] * u.Myr
+    Ms = [5e5, 1e7] * u.Msun
+    b_facs = [0.5]
+    phis = [0] * u.deg
+    vphis = [50] * u.pc / u.Myr
+    vzs = [0] * u.pc / u.Myr
     par_tasks = list(product(Ms, ts, b_facs, phis, vphis, vzs))
 
+    print(f"Running {len(par_tasks)} simulations...")
     sim_tasks = [
         (i, pars, sim_kw, impact_site, cache_path, overwrite)
         for i, pars in enumerate(par_tasks)
