@@ -116,12 +116,13 @@ def plot_worker(task):
     par_summary_text = (
         f"$M_s = ${pars['M_subhalo'].value:.1e} {pars['M_subhalo'].unit:latex_inline}\n"
         + f"$b = ${pars['impact_b'].to_value(u.pc):.1f} {u.pc:latex_inline}\n"
-        + f"$∆v = ${pars['impact_v'].value:.1f} {pars['impact_v'].unit:latex_inline}\n"
+        + r"$\phi = "
+        + f"${pars['phi'].to_value(u.deg):.1f} deg\n"
+        + r"$v_{\phi} = "
+        + f"${pars['vphi'].value:.1f} {pars['vphi'].unit:latex_inline}\n"
+        + r"$v_{z} = "
+        + f"${pars['vz'].value:.1f} {pars['vz'].unit:latex_inline}\n"
         + f"$∆t = ${pars['t_post_impact'].to_value(u.Myr):.0f} {u.Myr:latex_inline}\n"
-        + r"$\Delta\hat{x} = "
-        + f"${str(pars['dx_hat'])}\n"
-        + r"$\Delta\hat{v} = "
-        + f"${str(pars['dv_hat'])}"
     )
 
     if not filenames["xy"].exists() or overwrite:
