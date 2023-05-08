@@ -6,6 +6,7 @@ from itertools import product
 import astropy.table as at
 import astropy.units as u
 import gala.dynamics as gd
+import gala.integrate as gi
 import gala.potential as gp
 import h5py
 import matplotlib.pyplot as plt
@@ -27,6 +28,16 @@ def sim_worker(task):
     cache_file = cache_path / f"stream-sim-{i:04d}.hdf5"
 
     if not cache_file.exists() or overwrite:
+        sim = StreamSubhaloSimulation(t_post_impact=t_post_impact, **sim_kw)
+
+        impact_site_at_impact = sim.H.integrate_orbit(
+            impact_site,
+            dt=-sim.dt,
+            t1=sim.t_pre_impact + sim.t_post_impact,
+            t2=sim.t_pre_impact,
+            Integrator=gi.DOPRI853Integrator,
+        )[-1]
+
         # HACK: factor of 2.0 = denser than CDM!
         c_subhalo = 1.005 * u.kpc * (M_subhalo / (1e8 * u.Msun)) ** 0.5 / 2.0
         subhalo_potential = gp.HernquistPotential(
@@ -35,7 +46,9 @@ def sim_worker(task):
 
         impact_b = impact_b_fac * c_subhalo
 
-        subhalo_w0 = get_subhalo_w0(impact_site, b=impact_b, phi=phi, vphi=vphi, vz=vz)
+        subhalo_w0 = get_subhalo_w0(
+            impact_site_at_impact, b=impact_b, phi=phi, vphi=vphi, vz=vz
+        )
 
         # Compute "buffer" time duration and timestep
         # Buffer time is 32 times the crossing time:
@@ -46,8 +59,6 @@ def sim_worker(task):
             (BUFFER_N * subhalo_dx / subhalo_dv).to(u.Myr), decimals=0
         )
         impact_dt = np.round((t_buffer_impact / 256).to(u.Myr), decimals=1)
-
-        sim = StreamSubhaloSimulation(t_post_impact=t_post_impact, **sim_kw)
 
         print(f"[{i}]: starting simulation...")
         time0 = time.time()
