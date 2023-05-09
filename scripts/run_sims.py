@@ -20,6 +20,8 @@ from streamsubhalosim import (
     get_subhalo_w0,
 )
 
+_valid_grid_types = ["gallery", "product"]
+
 
 def sim_worker(task):
     i, pars, sim_kw, impact_site, cache_path, overwrite, *plot_args = task
@@ -205,9 +207,14 @@ def plot_worker(id_, cache_file, stream_frame, tracks, plot_path, overwrite):
 def main(pool, dist, grid_type="gallery", overwrite=False, overwrite_plots=False):
     print(f"Setting up job with n={pool.size} processes...")
 
+    if grid_type not in _valid_grid_types:
+        raise ValueError(
+            f"Invalid grid type '{grid_type}' - must be one of: {_valid_grid_types}"
+        )
+
     # Make a cache directory to save the simulation output:
     root_cache_path = (pathlib.Path(__file__).parent / "../cache").resolve().absolute()
-    root_cache_path = root_cache_path / f"dist-{dist:.0f}kpc"
+    root_cache_path = root_cache_path / f"dist-{dist:.0f}kpc-{grid_type}"
     plot_path = root_cache_path / "plots"
     plot_path.mkdir(exist_ok=True, parents=True)
     cache_path = root_cache_path / "sims"
@@ -287,9 +294,6 @@ def main(pool, dist, grid_type="gallery", overwrite=False, overwrite_plots=False
                 task = fid_pars[:n] + [par] + fid_pars[n + 1 :]
                 par_tasks.append(task)
 
-    else:
-        raise ValueError(f"Invalid grid type '{grid_type}'")
-
     print(f"Running {len(par_tasks)} simulations...")
     sim_tasks = [
         (
@@ -347,7 +351,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--dist", type=float, default=None, required=True)
     parser.add_argument(
-        "--grid", type=str, default="gallery", choices=["gallery", "product"]
+        "--grid", type=str, default="gallery", choices=_valid_grid_types
     )
     parser.add_argument("-o", "--overwrite", action="store_true", default=False)
     parser.add_argument(
