@@ -202,7 +202,7 @@ def plot_worker(id_, cache_file, stream_frame, tracks, plot_path, overwrite):
         plt.close(fig)
 
 
-def main(pool, dist, overwrite=False, overwrite_plots=False):
+def main(pool, dist, grid_type="gallery", overwrite=False, overwrite_plots=False):
     print(f"Setting up job with n={pool.size} processes...")
 
     # Make a cache directory to save the simulation output:
@@ -262,13 +262,33 @@ def main(pool, dist, overwrite=False, overwrite_plots=False):
     stream_frame = stream_sfr.replicate_without_data()
 
     # Define the grid of subhalo/interaction parameters to run with
-    ts = [50, 100, 200, 400, 800] * u.Myr
-    Ms = [5e5, 1e6, 5e6, 1e7] * u.Msun
-    b_facs = [0, 1.0, 2.0, 4.0]
-    phis = np.arange(0, 180 + 1, 45) * u.deg
-    vphis = [25, 50, 100, 200] * u.pc / u.Myr
-    vzs = [-50, 0, 50] * u.pc / u.Myr
-    par_tasks = list(product(Ms, ts, b_facs, phis, vphis, vzs))
+    K = 5
+    ts = np.geomspace(50, 800, K) * u.Myr
+    Ms = 10 ** np.linspace(5, 7, K) * u.Msun
+    b_facs = np.concatenate([0], np.geomspace(0.5, 4, K - 1))
+    phis = np.linspace(0, 180, K) * u.deg
+    vphis = np.geomspace(16, 256, K) * u.pc / u.Myr
+    vzs = [-64, -16, 0, 16, 64] * u.pc / u.Myr
+
+    if grid_type == "product":
+        par_tasks = list(product(Ms, ts, b_facs, phis, vphis, vzs))
+
+    elif grid_type == "gallery":
+        # fiducial
+        fid_i = K // 2
+        all_pars = [Ms, ts, b_facs, phis, vphis, vzs]
+        fid_pars = [x[fid_i] for x in all_pars]
+
+        par_tasks = [fid_pars]
+        for n, vary_pars in enumerate(all_pars):
+            for k, par in enumerate(vary_pars):
+                if k == fid_i:
+                    continue
+                task = fid_pars[:n] + [par] + fid_pars[n + 1 :]
+                par_tasks.append(task)
+
+    else:
+        raise ValueError(f"Invalid grid type '{grid_type}'")
 
     print(f"Running {len(par_tasks)} simulations...")
     sim_tasks = [
@@ -326,8 +346,13 @@ if __name__ == "__main__":
     grp.add_argument("--mpi", action="store_true", default=False)
 
     parser.add_argument("--dist", type=float, default=None, required=True)
+    parser.add_argument(
+        "--grid", type=str, default="gallery", choices=["gallery", "product"]
+    )
     parser.add_argument("-o", "--overwrite", action="store_true", default=False)
-    parser.add_argument("--overwriteplots", action="store_true", default=False)
+    parser.add_argument(
+        "--overwrite-plots", dest="overwrite_plots", action="store_true", default=False
+    )
     args = parser.parse_args()
 
     if args.mpi:
@@ -350,6 +375,7 @@ if __name__ == "__main__":
         main(
             pool,
             dist=args.dist,
+            grid_type=args.grid,
             overwrite=args.overwrite,
-            overwrite_plots=args.overwriteplots,
+            overwrite_plots=args.overwrite_plots,
         )
