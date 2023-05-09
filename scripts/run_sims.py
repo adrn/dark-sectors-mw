@@ -272,7 +272,7 @@ def main(pool, dist, grid_type="gallery", overwrite=False, overwrite_plots=False
     K = 5
     ts = np.geomspace(50, 800, K) * u.Myr
     Ms = 10 ** np.linspace(5, 7, K) * u.Msun
-    b_facs = np.concatenate([0], np.geomspace(0.5, 4, K - 1))
+    b_facs = np.concatenate(([0], np.geomspace(0.5, 4, K - 1)))
     phis = np.linspace(0, 180, K) * u.deg
     vphis = np.geomspace(16, 256, K) * u.pc / u.Myr
     vzs = [-64, -16, 0, 16, 64] * u.pc / u.Myr
