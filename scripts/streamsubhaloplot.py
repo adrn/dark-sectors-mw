@@ -31,6 +31,7 @@ def plot_sky_projections(
             "pm_phi2",
             "radial_velocity",
         ]
+    assert len(components) >= 1
 
     # Make data either by getting component data, or computing relative to tracks:
     ys = {}
@@ -67,6 +68,10 @@ def plot_sky_projections(
             sharex=True,
             constrained_layout=True,
         )
+
+        if len(components) == 1:
+            axes = [axes]
+
     else:
         fig = axes[0].figure
 
