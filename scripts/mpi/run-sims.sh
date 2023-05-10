@@ -3,9 +3,9 @@
 #SBATCH -o logs/sims.o
 #SBATCH -e logs/sims.e
 #SBATCH -N 1
-#SBATCH -t 02:00:00
-#SBATCH -p gen
-#SBATCH -C 'rome&ib'
+#SBATCH -t 12:00:00
+#SBATCH -p cca
+# -C 'rome&ib'
 
 source ~/.bash_profile
 
@@ -15,8 +15,10 @@ init_env
 
 date
 
-mpirun python -m mpi4py.futures run_sims.py --dist=10 --mpi
-# python run_sims.py --dist=20
-# python run_sims.py --dist=30
+# python run_sims.py --dist=20 --overwrite --overwriteplots
+
+# mpirun python -m mpi4py.futures run_sims.py --dist=10 --mpi --overwriteplots
+mpirun python -m mpi4py.futures run_sims.py --dist=20 --mpi --grid=gallery
+# mpirun python -m mpi4py.futures run_sims.py --dist=30 --mpi --overwriteplots
 
 date
