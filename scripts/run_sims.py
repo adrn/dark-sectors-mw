@@ -25,7 +25,7 @@ _valid_grid_types = ["gallery", "product"]
 
 def sim_worker(task):
     i, pars, sim_kw, impact_site, cache_path, overwrite, *plot_args = task
-    M_subhalo, t_post_impact, impact_b_fac, phi, vphi, vz = pars
+    M_subhalo, dens_fac, t_post_impact, impact_b_fac, phi, vphi, vz = pars
 
     cache_file = cache_path / f"stream-sim-{i:04d}.hdf5"
 
@@ -40,10 +40,9 @@ def sim_worker(task):
             Integrator=gi.DOPRI853Integrator,
         )[-1]
 
-        # HACK: factor of 2.0 = denser than CDM!
-        c_subhalo = 1.005 * u.kpc * (M_subhalo / (1e8 * u.Msun)) ** 0.5 / 2.0
+        c_subhalo = 1.005 * u.kpc * (M_subhalo / (1e8 * u.Msun)) ** 0.5
         subhalo_potential = gp.HernquistPotential(
-            m=M_subhalo, c=c_subhalo, units=galactic
+            m=M_subhalo, c=c_subhalo * dens_fac, units=galactic
         )
 
         impact_b = impact_b_fac * c_subhalo
@@ -85,6 +84,7 @@ def sim_worker(task):
         pars = {
             "id": i,
             "M_subhalo": M_subhalo,
+            "dens_fac": dens_fac,
             "c_subhalo": c_subhalo,
             "impact_b_fac": impact_b_fac,
             "impact_b": impact_b,
@@ -137,7 +137,7 @@ def plot_worker(id_, cache_file, stream_frame, tracks, plot_path, overwrite):
 
     par_summary_text = (
         f"$M_s = ${pars['M_subhalo'].value:.1e} {pars['M_subhalo'].unit:latex_inline}\n"
-        + f"$b = {pars['impact_b'].to_value(u.pc):.1f}$ {u.pc:latex_inline}\n"
+        + f"dens_fac = {pars['dens_fac']}$\n"
         + r"$\phi = "
         + f"{pars['phi'].to_value(u.deg):.1f}$ deg\n"
         + r"$v_{\phi} = "
@@ -271,19 +271,20 @@ def main(pool, dist, grid_type="gallery", overwrite=False, overwrite_plots=False
     # Define the grid of subhalo/interaction parameters to run with
     K = 5
     ts = np.geomspace(50, 800, K) * u.Myr
-    Ms = 10 ** np.linspace(5, 7, K) * u.Msun
+    Ms = 10 ** np.linspace(5.5, 7.5, K) * u.Msun
+    dens_facs = np.geomspace(0.25, 4, K)
     b_facs = np.concatenate(([0], np.geomspace(0.5, 4, K - 1)))
-    phis = np.linspace(0, 180, K) * u.deg
+    phis = np.linspace(-90, 90, K) * u.deg
     vphis = np.geomspace(16, 256, K) * u.pc / u.Myr
     vzs = [-64, -16, 0, 16, 64] * u.pc / u.Myr
 
     if grid_type == "product":
-        par_tasks = list(product(Ms, ts, b_facs, phis, vphis, vzs))
+        par_tasks = list(product(Ms, dens_facs, ts, b_facs, phis, vphis, vzs))
 
     elif grid_type == "gallery":
         # fiducial
         fid_i = K // 2
-        all_pars = [Ms, ts, b_facs, phis, vphis, vzs]
+        all_pars = [Ms, dens_facs, ts, b_facs, phis, vphis, vzs]
         fid_pars = [x[fid_i] for x in all_pars]
 
         par_tasks = [fid_pars]

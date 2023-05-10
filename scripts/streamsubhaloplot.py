@@ -19,6 +19,7 @@ def plot_sky_projections(
     scatter_kwargs=None,
     axes=None,
     xlabel=True,
+    ylabel=True,
 ):
     lon = stream_sfr.phi1.wrap_at(180 * u.deg).degree
     _mask = (lon > xlim[0]) & (lon < xlim[1])
@@ -89,7 +90,8 @@ def plot_sky_projections(
             ax.scatter(lon[_mask], ys[comp], **scatter_kwargs)
 
         ax.set_ylim(ylim)
-        ax.set_ylabel(comp)
+        if ylabel:
+            ax.set_ylabel(comp)
 
         if annotate_impact:
             yloc = ylim[0] + 0.3 * (ylim[1] - ylim[0])
